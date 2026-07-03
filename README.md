@@ -47,6 +47,22 @@ dotnet publish rbmanager -r win-x64 -c Release -o rbmanager\publish
 This produces a self-contained NativeAOT `rb.exe` (~5 MB) with no
 runtime dependency.
 
+## rbmanager MSI
+
+For channels that want a real installer instead of the bare exe,
+`build-installer.ps1` wraps rb.exe in a per-user MSI
+(`src/rbmanager.wxs`, WiX v5):
+
+```
+.\build-installer.ps1 -Validate
+```
+
+The MSI installs `rb.exe` into `%LOCALAPPDATA%\Ruby\bin` and puts that
+directory on the user PATH, producing exactly the layout `rb setup`
+creates, and removes both again on uninstall. rbmanager is a single MSI
+product line; see [docs/upgrade-code.md](docs/upgrade-code.md). The
+output is unsigned; code signing is tracked separately.
+
 ## CA trust bootstrap
 
 The vcpkg-built OpenSSL in the binary packages has no usable trust
@@ -78,6 +94,7 @@ install/uninstall round-trips).
 
 - `rbmanager/` — the version manager (C#, NativeAOT)
 - `overlay/` — files layered onto every installed runtime
+- `src/rbmanager.wxs`, `build-installer.ps1` — the rbmanager MSI
 - `src/ruby.wxs`, `build.ps1` — suspended MSI build
 - `docs/` — design notes
 - `spike/` — the original WiX spike materials and `query.ps1` for

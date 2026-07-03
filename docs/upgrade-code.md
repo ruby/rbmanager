@@ -36,6 +36,15 @@ Derived values for reference (reproducible with `New-UuidV5` in build.ps1):
 |------|-------------|
 | ruby-windows-installer:upgrade-code:4.1:x64 | D6CD8785-36FA-5FFC-9367-26DB090DA838 |
 | ruby-windows-installer:upgrade-code:4.1:arm64 | F4B8F180-42D3-5386-98D5-4F80BAE66099 |
+| ruby-windows-installer:upgrade-code:rbmanager | CAB95EEE-B5A6-52EA-94B3-B4413CE23855 |
+
+rbmanager itself (built by build-installer.ps1) is one product line with
+no arch in its identity: an arm64 package must upgrade an x64 install in
+place rather than sit alongside it, because both own the same
+%LOCALAPPDATA%\Ruby\bin. The name prefix predates the repository rename
+and is frozen with the rest of the format. Its PATH component is
+
+    name: ruby-windows-installer:path-component:rbmanager:perUser
 
 The PATH environment component needs a stable GUID per product line for
 the same reason, with the install scope added because per-machine and

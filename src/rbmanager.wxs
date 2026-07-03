@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  MSI authoring for rbmanager itself (the rb.exe command).
+
+  Installs rb.exe into %LOCALAPPDATA%\Ruby\bin (the same place `rb setup`
+  uses) and puts that directory on the user PATH, so the MSI and the bare
+  exe channel produce identical layouts. Per-user only; no elevation.
+
+  All variable inputs are supplied by build-installer.ps1 as preprocessor
+  variables:
+    Version           numeric x.y.z ProductVersion
+    UpgradeCode       UUIDv5, see docs/upgrade-code.md
+    PathComponentGuid UUIDv5, see docs/upgrade-code.md
+    RbExe             path to the published rb.exe
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="rbmanager"
+           Manufacturer="Ruby Core Team"
+           Version="$(var.Version)"
+           UpgradeCode="$(var.UpgradeCode)"
+           Scope="perUser"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of rbmanager is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="RUBYROOT" Name="Ruby">
+        <Directory Id="BINDIR" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="rbmanager" Level="1">
+      <ComponentRef Id="RbExe" />
+      <ComponentRef Id="PathComponent" />
+    </Feature>
+
+    <Component Id="RbExe" Directory="BINDIR">
+      <File Id="RbExeFile" Source="$(var.RbExe)" Name="rb.exe" KeyPath="yes" />
+    </Component>
+
+    <!-- [RUBYROOT]bin rather than [BINDIR] to avoid a trailing backslash,
+         matching the entry UserPath.Ensure writes. -->
+    <Component Id="PathComponent" Directory="BINDIR" Guid="$(var.PathComponentGuid)">
+      <CreateFolder />
+      <Environment Id="UpdatePath" Name="PATH" Value="[RUBYROOT]bin"
+                   Part="last" Action="set" System="no" Permanent="no" />
+    </Component>
+
+  </Package>
+</Wix>
