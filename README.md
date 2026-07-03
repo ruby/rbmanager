@@ -1,69 +1,77 @@
 # windows-installer
 
-MSI packaging for the official Ruby mswin binary distribution.
+Distribution tooling for the official Ruby mswin binary packages.
 
-This repository is the second half of a two-layer design. The first layer
-lives in ruby/ruby: the nmake-only `binary-package` target
-(win32/Makefile.sub plus tool/binary-package.rb) builds Ruby with the
-Microsoft toolchain and produces a relocatable zip. This repository takes
-that zip as its only input and turns it into an MSI with WiX v5. The
-contract between the two layers is nothing more than the zip layout.
+The input is always the relocatable zip produced by the nmake-only
+`binary-package` target in ruby/ruby (win32/Makefile.sub plus
+tool/binary-package.rb): `ruby-X.Y.Z-<arch>-mswinNN_MMM.zip`, a single
+root directory holding `bin/`, `lib/`, `include/`, `share/`, and
+`LICENSES/`, built with `LOAD_RELATIVE` so the tree runs from any
+location. The contract between ruby/ruby and this repository is nothing
+more than that zip layout.
 
-## Input contract
+## rbmanager
 
-The input is `ruby-X.Y.Z-<arch>-mswinNN_MMM.zip` (e.g.
-`ruby-4.1.0-x64-mswin64_140.zip`). It contains a single root directory of
-the same name, holding `bin/` (ruby.exe, vcpkg dependency DLLs, vcruntime
-DLLs, RubyGems command stubs), `lib/`, `include/`, `share/`, and
-`LICENSES/`. The binaries are built with `LOAD_RELATIVE`, so the tree runs
-from any location; the MSI decides where that location is.
+`rbmanager` is a small version manager in the spirit of Python's install
+manager (PEP 773): it fetches a binary-package zip, extracts it under
+`%LOCALAPPDATA%\rbmanager\rubies\`, and makes it available on PATH. No
+elevation is required at any point.
 
-## Building
-
-Requires the .NET 8 SDK. WiX 5.0.2 is pinned as a dotnet local tool in
-`.config/dotnet-tools.json` and restored automatically.
-
-```powershell
-.\build.ps1 -Zip path\to\ruby-4.1.0-x64-mswin64_140.zip
+```
+rbmanager install <zip|url>   install a ruby binary package
+rbmanager list                list installed rubies
+rbmanager use <version>       switch the active ruby
+rbmanager uninstall <version> remove an installed ruby
 ```
 
-This produces `dist/ruby-4.1.0-x64-mswin.msi`, a per-machine package that
-installs under `Program Files\Ruby-4.1-x64-mswin` and appends its `bin`
-directory to the system PATH. Pass `-Scope perUser` for a per-user package
-(installs under `%LOCALAPPDATA%\Programs`, user PATH, no elevation
-required) and `-Validate` to run `wix msi validate` (ICE checks) on the
-result.
+The active ruby is exposed through an NTFS directory junction
+`%LOCALAPPDATA%\rbmanager\current`, and `install` appends
+`%LOCALAPPDATA%\rbmanager\current\bin` to the user PATH once; switching
+versions only re-points the junction. Junctions rather than symbolic
+links because they need no privilege and no Developer Mode.
 
-## Overlay: CA trust bootstrap
+Build (requires the .NET 8 SDK and MSVC link.exe):
 
-The MSI is a repackaging of the zip plus one overlay file:
-`overlay/site_ruby/rubygems/defaults/operating_system.rb`, copied into the
-version-independent `lib/ruby/site_ruby` during the build. The vcpkg-built
-OpenSSL has no usable trust anchors on end-user machines (its baked
-OPENSSLDIR does not exist there), so this hook exports the Windows ROOT
-certificate store to a weekly-refreshed PEM cache under
+```
+dotnet publish rbmanager -r win-x64 -c Release -o rbmanager\publish
+```
+
+This produces a self-contained NativeAOT `rbmanager.exe` (~5 MB) with no
+runtime dependency.
+
+## CA trust bootstrap
+
+The vcpkg-built OpenSSL in the binary packages has no usable trust
+anchors on end-user machines (its baked OPENSSLDIR does not exist
+there). Until ruby/openssl can read the Windows certificate store
+natively through OpenSSL's winstore loader,
+`overlay/site_ruby/rubygems/defaults/operating_system.rb` exports the
+Windows ROOT store to a weekly-refreshed PEM cache under
 `%LOCALAPPDATA%\ruby-mswin` and sets `SSL_CERT_FILE` for the current
 process only, deferring trust management to Windows Update instead of
-shipping a CA bundle. The export runs through a one-shot powershell.exe
-child using the .NET X509Store API. This is an interim measure until
-ruby/openssl can read the Windows store natively through OpenSSL's
-winstore loader; the hook does nothing when `SSL_CERT_FILE` or
-`SSL_CERT_DIR` is already set, and its failure modes all degrade to the
-previous behavior.
+shipping a CA bundle. rbmanager embeds this hook and injects it into
+every runtime it extracts; the suspended MSI build applies the same file
+as a staging overlay, so both channels behave identically. The hook does
+nothing when `SSL_CERT_FILE` or `SSL_CERT_DIR` is already set, and its
+failure modes all degrade to the previous behavior.
 
-## Identity and upgrades
+## MSI build (suspended)
 
-Each Ruby X.Y series and architecture pair is a distinct MSI product line:
-different series install side by side, while installs within a series
-upgrade in place via `MajorUpgrade`. The UpgradeCode for each line is
-derived deterministically (UUIDv5) rather than allocated by hand; see
-[docs/upgrade-code.md](docs/upgrade-code.md).
+An earlier iteration packaged each Ruby version as a WiX v5 MSI. That
+direction is suspended in favor of rbmanager, but the sources are kept
+because they are verified working and remain the right answer if
+enterprise (GPO/Intune) deployment ever needs one: `src/ruby.wxs`,
+`build.ps1`, and [docs/upgrade-code.md](docs/upgrade-code.md) for the
+UpgradeCode allocation scheme. WiX 5.0.2 is pinned as a dotnet local
+tool in `.config/dotnet-tools.json`. See the git history for the
+verification record (ICE validation, perMachine and perUser
+install/uninstall round-trips).
 
 ## Layout
 
-- `src/ruby.wxs` — the WiX authoring, parameterized entirely through
-  preprocessor variables supplied by build.ps1
-- `build.ps1` — zip extraction, identity derivation, `wix build`
-- `spike/` — the original minimal spike that validated glob harvesting,
-  PATH mutation, MajorUpgrade, and per-machine scope, plus `query.ps1`
-  for dumping MSI tables via the WindowsInstaller COM API
+- `rbmanager/` — the version manager (C#, NativeAOT)
+- `overlay/` — files layered onto every installed runtime
+- `src/ruby.wxs`, `build.ps1` — suspended MSI build
+- `docs/` — design notes
+- `spike/` — the original WiX spike materials and `query.ps1` for
+  dumping MSI tables via the WindowsInstaller COM API
