@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+PackageIdentifier: RubyLang.rbmanager
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: Ruby Core Team
+PublisherUrl: https://www.ruby-lang.org/
+PackageName: rbmanager
+PackageUrl: https://github.com/ruby/windows-installer
+License: BSD-2-Clause
+ShortDescription: Version manager for the official Ruby mswin binary packages
+Description: |-
+  rbmanager installs and manages the official Ruby mswin binary packages
+  on Windows. It downloads a relocatable binary package, extracts it under
+  %LOCALAPPDATA%\rbmanager, and switches the active version through an
+  NTFS junction, with no elevation required.
+Moniker: rbmanager
+Tags:
+- ruby
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0
