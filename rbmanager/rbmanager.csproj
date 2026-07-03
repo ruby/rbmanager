@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>rbmanager</AssemblyName>
+    <RootNamespace>RbManager</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Required by the LibraryImport source generator -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same CA trust hook the MSI overlay ships; injected into every
+         extracted runtime so both install channels behave identically. -->
+    <EmbeddedResource Include="..\overlay\site_ruby\rubygems\defaults\operating_system.rb"
+                      LogicalName="operating_system.rb" />
+  </ItemGroup>
+
+</Project>

@@ -3,3 +3,6 @@ dist/
 *.msi
 *.wixpdb
 *.cab
+rbmanager/bin/
+rbmanager/obj/
+rbmanager/publish/
