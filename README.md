@@ -55,11 +55,10 @@ there). Until ruby/openssl can read the Windows certificate store
 natively through OpenSSL's winstore loader,
 `overlay/site_ruby/rubygems/defaults/operating_system.rb` exports the
 Windows ROOT store to a weekly-refreshed PEM cache under
-`%LOCALAPPDATA%\ruby-mswin` and sets `SSL_CERT_FILE` for the current
+`%LOCALAPPDATA%\Ruby` and sets `SSL_CERT_FILE` for the current
 process only, deferring trust management to Windows Update instead of
 shipping a CA bundle. rbmanager embeds this hook and injects it into
-every runtime it extracts; the suspended MSI build applies the same file
-as a staging overlay, so both channels behave identically. The hook does
+every runtime it extracts. The hook does
 nothing when `SSL_CERT_FILE` or `SSL_CERT_DIR` is already set, and its
 failure modes all degrade to the previous behavior.
 

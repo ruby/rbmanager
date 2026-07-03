@@ -28,7 +28,9 @@ module RubyMswin
         local = ENV["LOCALAPPDATA"]
         return if local.nil? || local.empty?
 
-        cache = File.join(local, "ruby-mswin", "windows-root-certs.pem")
+        # Kept inside rbmanager's data root (%LOCALAPPDATA%\Ruby) so that
+        # uninstalling everything leaves no other trace behind.
+        cache = File.join(local, "Ruby", "windows-root-certs.pem")
         refresh(cache) unless fresh?(cache)
         # A stale cache is still better than no trust anchors, so use
         # whatever exists even when the refresh failed.
