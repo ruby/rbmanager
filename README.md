@@ -12,20 +12,21 @@ more than that zip layout.
 
 ## rbmanager
 
-`rbmanager` is a small version manager in the spirit of Python's install
+rbmanager is a small version manager in the spirit of Python's install
 manager (PEP 773): it fetches a binary-package zip, extracts it under
 `%LOCALAPPDATA%\rbmanager\rubies\`, and makes it available on PATH. No
-elevation is required at any point.
+elevation is required at any point. The command is `rb`, mirroring the
+pymanager/`py` naming split; rbmanager remains the product name.
 
 ```
-rbmanager setup               copy rbmanager itself onto PATH
-rbmanager install <zip|url>   install a ruby binary package
-rbmanager list                list installed rubies
-rbmanager use <version>       switch the active ruby
-rbmanager uninstall <version> remove an installed ruby
+rb setup               copy rb itself onto PATH
+rb install <zip|url>   install a ruby binary package
+rb list                list installed rubies
+rb use <version>       switch the active ruby
+rb uninstall <version> remove an installed ruby
 ```
 
-rbmanager is a bare exe; `setup` copies it to
+rb is a bare exe; `setup` copies it to
 `%LOCALAPPDATA%\rbmanager\bin` and puts that directory on the user PATH,
 which stands in for an installer until a winget manifest exists.
 
@@ -41,7 +42,7 @@ Build (requires the .NET 8 SDK and MSVC link.exe):
 dotnet publish rbmanager -r win-x64 -c Release -o rbmanager\publish
 ```
 
-This produces a self-contained NativeAOT `rbmanager.exe` (~5 MB) with no
+This produces a self-contained NativeAOT `rb.exe` (~5 MB) with no
 runtime dependency.
 
 ## CA trust bootstrap

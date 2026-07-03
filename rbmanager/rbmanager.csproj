@@ -3,7 +3,9 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <AssemblyName>rbmanager</AssemblyName>
+    <!-- The product is rbmanager; the command is rb, following the
+         pymanager/py naming split. -->
+    <AssemblyName>rb</AssemblyName>
     <RootNamespace>RbManager</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

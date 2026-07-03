@@ -26,7 +26,7 @@ internal static class Program
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine($"rbmanager: {e.Message}");
+            Console.Error.WriteLine($"rb: {e.Message}");
             return 1;
         }
     }
@@ -34,9 +34,9 @@ internal static class Program
     private static int Usage()
     {
         Console.WriteLine("""
-            usage: rbmanager <command>
+            usage: rb <command>
 
-              setup               copy rbmanager itself onto PATH
+              setup               copy rb itself onto PATH
               install <zip|url>   install a ruby binary package from a zip file or URL
               list                list installed rubies
               use <version>       switch the active ruby
@@ -52,14 +52,14 @@ internal static class Program
         string self = Environment.ProcessPath
             ?? throw new InvalidOperationException("cannot determine own path");
         string binDir = Path.Combine(Root, "bin");
-        string dest = Path.Combine(binDir, "rbmanager.exe");
+        string dest = Path.Combine(binDir, "rb.exe");
         if (!string.Equals(self, dest, StringComparison.OrdinalIgnoreCase))
         {
             Directory.CreateDirectory(binDir);
             File.Copy(self, dest, overwrite: true);
         }
         UserPath.Ensure(binDir);
-        Console.WriteLine($"Installed rbmanager to {dest}");
+        Console.WriteLine($"Installed rb to {dest}");
         Console.WriteLine("Open a new terminal to pick up PATH changes.");
         return 0;
     }
@@ -130,7 +130,7 @@ internal static class Program
         if (name == CurrentTarget())
         {
             Directory.Delete(Current);
-            Console.WriteLine("Removed the active selection; run `rbmanager use` to pick another.");
+            Console.WriteLine("Removed the active selection; run `rb use` to pick another.");
         }
         Directory.Delete(Path.Combine(Rubies, name), recursive: true);
         Console.WriteLine($"Uninstalled {name}");
