@@ -1,15 +1,30 @@
-param($msi)
+<#
+  Dump interesting MSI tables for inspection.
+
+  Record.StringData is a parameterized property that PowerShell cannot
+  invoke through the WindowsInstaller COM interop, so go through
+  Database.Export, which writes each table as a tab-separated .idt file.
+#>
+param(
+  [Parameter(Mandatory)][string]$Msi,
+  [string[]]$Tables = @('Environment', 'Upgrade', 'Property')
+)
+$ErrorActionPreference = 'Stop'
+
 $installer = New-Object -ComObject WindowsInstaller.Installer
-$db = $installer.OpenDatabase($msi, 0)
-function Q($sql){
-  $view = $db.OpenView($sql); $view.Execute()
-  while($true){
-    $rec = $view.Fetch(); if($null -eq $rec){break}
-    $n = $rec.FieldCount; $f=@()
-    for($i=1;$i -le $n;$i++){ $f += ,([string]$rec.StringData($i)) }
-    ($f -join "  |  ")
+$db = $installer.OpenDatabase((Resolve-Path $Msi).Path, 0)
+$tmp = Join-Path $env:TEMP "msi-idt-$PID"
+New-Item -ItemType Directory -Force $tmp | Out-Null
+try {
+  foreach ($t in $Tables) {
+    "=== $t ==="
+    $idt = "$t.idt"
+    $db.Export($t, $tmp, $idt)
+    # Rows 1-3 of an .idt are column names, column definitions, and the
+    # table header; the data starts at line 4.
+    Get-Content (Join-Path $tmp $idt) | Select-Object -Skip 3
+    ""
   }
+} finally {
+  Remove-Item -Recurse -Force $tmp
 }
-"=== Environment (PATH mutation) ==="; Q "SELECT Name, Value FROM Environment"
-"=== Upgrade (MajorUpgrade) ==="; Q "SELECT UpgradeCode, VersionMin, VersionMax, Attributes, ActionProperty FROM Upgrade"
-"=== Property (scope/identity) ==="; Q "SELECT Property, Value FROM Property"
