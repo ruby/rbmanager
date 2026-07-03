@@ -5,8 +5,10 @@ namespace RbManager;
 
 internal static class Program
 {
+    // %LOCALAPPDATA%\Ruby, named after the language like pymanager's
+    // %LocalAppData%\Python, not after the tool.
     private static readonly string Root = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rbmanager");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ruby");
     private static readonly string Rubies = Path.Combine(Root, "rubies");
     private static readonly string Current = Path.Combine(Root, "current");
 

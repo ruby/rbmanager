@@ -11,7 +11,7 @@ ShortDescription: Version manager for the official Ruby mswin binary packages
 Description: |-
   rbmanager installs and manages the official Ruby mswin binary packages
   on Windows. It downloads a relocatable binary package, extracts it under
-  %LOCALAPPDATA%\rbmanager, and switches the active version through an
+  %LOCALAPPDATA%\Ruby, and switches the active version through an
   NTFS junction, with no elevation required.
 Moniker: rbmanager
 Tags:

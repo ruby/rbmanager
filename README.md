@@ -14,9 +14,11 @@ more than that zip layout.
 
 rbmanager is a small version manager in the spirit of Python's install
 manager (PEP 773): it fetches a binary-package zip, extracts it under
-`%LOCALAPPDATA%\rbmanager\rubies\`, and makes it available on PATH. No
-elevation is required at any point. The command is `rb`, mirroring the
-pymanager/`py` naming split; rbmanager remains the product name.
+`%LOCALAPPDATA%\Ruby\rubies\`, and makes it available on PATH. No
+elevation is required at any point. Both names mirror pymanager: the
+command is `rb` as pymanager's is `py`, and the data directory is named
+after the language (`%LOCALAPPDATA%\Ruby`, like `%LocalAppData%\Python`)
+rather than after the tool. rbmanager remains the product name.
 
 ```
 rb setup               copy rb itself onto PATH
@@ -27,12 +29,12 @@ rb uninstall <version> remove an installed ruby
 ```
 
 rb is a bare exe; `setup` copies it to
-`%LOCALAPPDATA%\rbmanager\bin` and puts that directory on the user PATH,
+`%LOCALAPPDATA%\Ruby\bin` and puts that directory on the user PATH,
 which stands in for an installer until a winget manifest exists.
 
 The active ruby is exposed through an NTFS directory junction
-`%LOCALAPPDATA%\rbmanager\current`, and `install` appends
-`%LOCALAPPDATA%\rbmanager\current\bin` to the user PATH once; switching
+`%LOCALAPPDATA%\Ruby\current`, and `install` appends
+`%LOCALAPPDATA%\Ruby\current\bin` to the user PATH once; switching
 versions only re-points the junction. Junctions rather than symbolic
 links because they need no privilege and no Developer Mode.
 
