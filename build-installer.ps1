@@ -25,8 +25,8 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
   throw "Version must be numeric x.y.z for MSI ProductVersion, got '$Version'"
 }
 
-# Same UUIDv5 derivation as build.ps1; see docs/upgrade-code.md. rbmanager
-# is a single product line, so the arch is not part of its identity.
+# UUIDv5 derivation; see docs/upgrade-code.md. rbmanager is a single
+# product line, so the arch is not part of its identity.
 $NamespaceGuid = [guid]'E2C11F7E-A84E-4363-A0EB-D0A93E07E3CF'
 
 function New-UuidV5([guid]$Namespace, [string]$Name) {

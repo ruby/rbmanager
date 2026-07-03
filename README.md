@@ -60,8 +60,13 @@ For channels that want a real installer instead of the bare exe,
 The MSI installs `rb.exe` into `%LOCALAPPDATA%\Ruby\bin` and puts that
 directory on the user PATH, producing exactly the layout `rb setup`
 creates, and removes both again on uninstall. rbmanager is a single MSI
-product line; see [docs/upgrade-code.md](docs/upgrade-code.md). The
-output is unsigned; code signing is tracked separately.
+product line; see [docs/upgrade-code.md](docs/upgrade-code.md). WiX
+5.0.2 is pinned as a dotnet local tool in `.config/dotnet-tools.json`.
+The output is unsigned; code signing is tracked separately.
+
+An earlier iteration packaged each Ruby version as its own MSI. That
+direction was dropped in favor of rbmanager; see the git history for
+the sources and the verification record.
 
 ## CA trust bootstrap
 
@@ -78,24 +83,10 @@ every runtime it extracts. The hook does
 nothing when `SSL_CERT_FILE` or `SSL_CERT_DIR` is already set, and its
 failure modes all degrade to the previous behavior.
 
-## MSI build (suspended)
-
-An earlier iteration packaged each Ruby version as a WiX v5 MSI. That
-direction is suspended in favor of rbmanager, but the sources are kept
-because they are verified working and remain the right answer if
-enterprise (GPO/Intune) deployment ever needs one: `src/ruby.wxs`,
-`build.ps1`, and [docs/upgrade-code.md](docs/upgrade-code.md) for the
-UpgradeCode allocation scheme. WiX 5.0.2 is pinned as a dotnet local
-tool in `.config/dotnet-tools.json`. See the git history for the
-verification record (ICE validation, perMachine and perUser
-install/uninstall round-trips).
-
 ## Layout
 
 - `rbmanager/` — the version manager (C#, NativeAOT)
 - `overlay/` — files layered onto every installed runtime
 - `src/rbmanager.wxs`, `build-installer.ps1` — the rbmanager MSI
-- `src/ruby.wxs`, `build.ps1` — suspended MSI build
 - `docs/` — design notes
-- `spike/` — the original WiX spike materials and `query.ps1` for
-  dumping MSI tables via the WindowsInstaller COM API
+- `tools/query.ps1` — dump MSI tables via the WindowsInstaller COM API
