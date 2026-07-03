@@ -75,6 +75,18 @@ if ($roots.Count -ne 1 -or -not $roots[0].PSIsContainer) {
 }
 $stagingDir = $roots[0].FullName
 
+# --- Apply the overlay -------------------------------------------------------
+# Files this repo adds on top of the zip contents (interim CA trust hook and
+# similar). Placed under the version-independent site_ruby directory, which
+# is always on $LOAD_PATH, so nothing needs to know the ABI suffix
+# (ruby_version can be e.g. "4.1.0+4" on dev builds).
+$overlay = Join-Path $PSScriptRoot 'overlay\site_ruby'
+if (Test-Path $overlay) {
+  $siteRuby = Join-Path $stagingDir 'lib\ruby\site_ruby'
+  New-Item -ItemType Directory -Force $siteRuby | Out-Null
+  Copy-Item (Join-Path $overlay '*') -Destination $siteRuby -Recurse -Force
+}
+
 # --- Compile ----------------------------------------------------------------
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $suffix = if ($Scope -eq 'perUser') { '-perUser' } else { '' }

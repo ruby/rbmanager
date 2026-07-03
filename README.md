@@ -34,6 +34,23 @@ directory to the system PATH. Pass `-Scope perUser` for a per-user package
 required) and `-Validate` to run `wix msi validate` (ICE checks) on the
 result.
 
+## Overlay: CA trust bootstrap
+
+The MSI is a repackaging of the zip plus one overlay file:
+`overlay/site_ruby/rubygems/defaults/operating_system.rb`, copied into the
+version-independent `lib/ruby/site_ruby` during the build. The vcpkg-built
+OpenSSL has no usable trust anchors on end-user machines (its baked
+OPENSSLDIR does not exist there), so this hook exports the Windows ROOT
+certificate store to a weekly-refreshed PEM cache under
+`%LOCALAPPDATA%\ruby-mswin` and sets `SSL_CERT_FILE` for the current
+process only, deferring trust management to Windows Update instead of
+shipping a CA bundle. The export runs through a one-shot powershell.exe
+child using the .NET X509Store API. This is an interim measure until
+ruby/openssl can read the Windows store natively through OpenSSL's
+winstore loader; the hook does nothing when `SSL_CERT_FILE` or
+`SSL_CERT_DIR` is already set, and its failure modes all degrade to the
+previous behavior.
+
 ## Identity and upgrades
 
 Each Ruby X.Y series and architecture pair is a distinct MSI product line:
