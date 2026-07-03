@@ -7,7 +7,7 @@
 # Until ruby/openssl can read the Windows certificate store natively (via
 # OpenSSL's winstore OSSL_STORE loader), this hook exports the Windows ROOT
 # store to a cached PEM file and points SSL_CERT_FILE at it for this process
-# only. Installed by the windows-installer overlay, NOT part of ruby/ruby;
+# only. Installed by the rbmanager overlay, NOT part of ruby/ruby;
 # remove once the upstream support exists.
 #
 # The export runs through a one-shot powershell.exe child process rather
@@ -15,7 +15,7 @@
 # rubygems is still bootstrapping this very file, nor under `bundle exec`
 # with a Gemfile that does not list it.
 #
-# https://github.com/ruby/windows-installer
+# https://github.com/ruby/rbmanager
 
 module RubyMswin
   module WindowsRootCerts

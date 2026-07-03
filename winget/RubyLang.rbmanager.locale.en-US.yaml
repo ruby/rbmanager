@@ -5,7 +5,7 @@ PackageLocale: en-US
 Publisher: Ruby Core Team
 PublisherUrl: https://www.ruby-lang.org/
 PackageName: rbmanager
-PackageUrl: https://github.com/ruby/windows-installer
+PackageUrl: https://github.com/ruby/rbmanager
 License: BSD-2-Clause
 ShortDescription: Version manager for the official Ruby mswin binary packages
 Description: |-

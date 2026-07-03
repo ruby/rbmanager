@@ -1,4 +1,4 @@
-# windows-installer
+# rbmanager
 
 Distribution tooling for the official Ruby mswin binary packages.
 
