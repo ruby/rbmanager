@@ -16,6 +16,7 @@ internal static class Program
         {
             return args switch
             {
+                ["setup"] => Setup(),
                 ["install", var source] => await Install(source),
                 ["list"] => List(),
                 ["use", var name] => Use(name),
@@ -35,12 +36,32 @@ internal static class Program
         Console.WriteLine("""
             usage: rbmanager <command>
 
+              setup               copy rbmanager itself onto PATH
               install <zip|url>   install a ruby binary package from a zip file or URL
               list                list installed rubies
               use <version>       switch the active ruby
               uninstall <version> remove an installed ruby
             """);
         return 2;
+    }
+
+    // Self-installation: rbmanager is distributed as a bare exe, so `setup`
+    // is what makes it durably available instead of an installer.
+    private static int Setup()
+    {
+        string self = Environment.ProcessPath
+            ?? throw new InvalidOperationException("cannot determine own path");
+        string binDir = Path.Combine(Root, "bin");
+        string dest = Path.Combine(binDir, "rbmanager.exe");
+        if (!string.Equals(self, dest, StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.CreateDirectory(binDir);
+            File.Copy(self, dest, overwrite: true);
+        }
+        UserPath.Ensure(binDir);
+        Console.WriteLine($"Installed rbmanager to {dest}");
+        Console.WriteLine("Open a new terminal to pick up PATH changes.");
+        return 0;
     }
 
     private static async Task<int> Install(string source)

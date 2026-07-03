@@ -18,11 +18,16 @@ manager (PEP 773): it fetches a binary-package zip, extracts it under
 elevation is required at any point.
 
 ```
+rbmanager setup               copy rbmanager itself onto PATH
 rbmanager install <zip|url>   install a ruby binary package
 rbmanager list                list installed rubies
 rbmanager use <version>       switch the active ruby
 rbmanager uninstall <version> remove an installed ruby
 ```
+
+rbmanager is a bare exe; `setup` copies it to
+`%LOCALAPPDATA%\rbmanager\bin` and puts that directory on the user PATH,
+which stands in for an installer until a winget manifest exists.
 
 The active ruby is exposed through an NTFS directory junction
 `%LOCALAPPDATA%\rbmanager\current`, and `install` appends
