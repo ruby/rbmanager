@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Ruby 4.1 (mswin spike)"
+           Manufacturer="Ruby Core Team"
+           Version="4.1.0"
+           UpgradeCode="7B3D9F1A-2C4E-4B6A-8D1F-3E5A7C9B1D2F"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <!-- 4-of-4 spike concern: upgrade in place, block downgrade -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Ruby is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- per-machine install under Program Files -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Ruby41-mswin" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Ruby" Level="1">
+      <ComponentGroupRef Id="RubyTree" />
+      <ComponentRef Id="PathComponent" />
+    </Feature>
+
+    <!-- 1-of-4 spike concern: harvest an entire staging tree by glob (heat.exe replacement) -->
+    <ComponentGroup Id="RubyTree" Directory="INSTALLFOLDER">
+      <Files Include="staging\**" />
+    </ComponentGroup>
+
+    <!-- 2-of-4 spike concern: add bin/ to system PATH -->
+    <Component Id="PathComponent" Directory="INSTALLFOLDER" Guid="8C4E0A2B-3D5F-4C7B-9E2A-4F6B8D0C2E3A">
+      <CreateFolder />
+      <Environment Id="UpdatePath" Name="PATH" Value="[INSTALLFOLDER]bin"
+                   Part="last" Action="set" System="yes" Permanent="no" />
+    </Component>
+
+  </Package>
+</Wix>
