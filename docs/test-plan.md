@@ -354,7 +354,14 @@ Run commands:
 dotnet test rbmanager.sln --filter "Category=Unit|Category=Integration"   # default, no VS needed
 dotnet test rbmanager.sln --filter "Category=E2E"
 dotnet test rbmanager.sln --filter "Category=RequiresVS"                  # only on a VS machine
+dotnet test rbmanager.sln --filter "Category=Publish"                     # AOT publish; needs VS
 ```
+
+Note (implementation): case 32 ("setup run from the copied exe") moved out
+of the default E2E suite into the Publish suite. The framework-dependent
+Debug apphost `rb.exe` cannot run once copied away from its `rb.dll`, so
+the self-copy-skip path is only meaningful against the self-contained AOT
+single-file exe, which the Publish suite already builds.
 
 Full verification at the end of each phase, not after every test added.
 There is no CI wiring in scope for this repo yet; the suite must pass
