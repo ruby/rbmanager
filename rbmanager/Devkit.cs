@@ -26,16 +26,12 @@ internal static class Devkit
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
         "Microsoft Visual Studio", "Installer", "vswhere.exe");
 
-    private const string MissingVs =
-        "no Visual Studio C++ toolchain found.\n" +
-        "Install the \"Desktop development with C++\" workload, e.g.\n" +
-        "  winget install Microsoft.VisualStudio.2022.BuildTools " +
-        "--override \"--quiet --add Microsoft.VisualStudio.Workload.VCTools\"";
-
     public static int Enable(string? shell)
     {
-        var env = ActivatedDelta();
         Shell target = ParseShell(shell);
+        string? vsdevcmd = LocateVsDevCmd();
+        if (vsdevcmd is null) return WarnMissingToolchain();
+        var env = ActivatedDelta(vsdevcmd);
         foreach ((string key, string value) in env)
             Console.WriteLine(Assignment(target, key, value));
         // The mkmf gotcha: with NoDefaultCurrentDirectoryInExePath set,
@@ -47,7 +43,9 @@ internal static class Devkit
 
     public static int Exec(string[] command)
     {
-        var delta = ActivatedDelta();
+        string? vsdevcmd = LocateVsDevCmd();
+        if (vsdevcmd is null) return WarnMissingToolchain();
+        var delta = ActivatedDelta(vsdevcmd);
         // cmd.exe /c so that .cmd shims (gem, bundle) and PATHEXT resolve
         // the way they would if the user had typed the command directly.
         string commandLine = string.Join(' ', command.Select(QuoteArg));
@@ -72,10 +70,8 @@ internal static class Devkit
 
     // Runs VsDevCmd in a clean child and returns only the variables it added
     // or changed relative to our own (i.e. the calling shell's) environment.
-    private static IEnumerable<(string, string)> ActivatedDelta()
+    private static IEnumerable<(string, string)> ActivatedDelta(string vsdevcmd)
     {
-        string install = LocateVs();
-        string vsdevcmd = Path.Combine(install, "Common7", "Tools", "VsDevCmd.bat");
         string cmd = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
 
@@ -112,10 +108,12 @@ internal static class Devkit
         }
     }
 
-    private static string LocateVs()
+    // Resolves the newest VS install that carries the MSVC toolset and
+    // returns its VsDevCmd.bat, or null when no usable toolchain exists
+    // (vswhere absent, no matching install, or VsDevCmd.bat missing).
+    private static string? LocateVsDevCmd()
     {
-        if (!File.Exists(VsWhere))
-            throw new InvalidOperationException(MissingVs);
+        if (!File.Exists(VsWhere)) return null;
         var psi = new ProcessStartInfo
         {
             FileName = VsWhere,
@@ -137,9 +135,30 @@ internal static class Devkit
             ?? throw new InvalidOperationException("failed to launch vswhere");
         string path = proc.StandardOutput.ReadToEnd().Trim();
         proc.WaitForExit();
-        if (path.Length == 0)
-            throw new InvalidOperationException(MissingVs);
-        return path;
+        if (path.Length == 0) return null;
+        string vsdevcmd = Path.Combine(path, "Common7", "Tools", "VsDevCmd.bat");
+        return File.Exists(vsdevcmd) ? vsdevcmd : null;
+    }
+
+    // Fails fast with the setup steps instead of letting mkmf die later
+    // with its cryptic "install development tools first". stderr only, so
+    // an eval'd `rb enable` pipeline never swallows it.
+    private static int WarnMissingToolchain()
+    {
+        Console.Error.WriteLine("""
+            rb: warning: no Visual Studio C++ toolchain found; native extensions cannot be built.
+
+            To set one up:
+
+              1. Install the "Desktop development with C++" workload, e.g.
+
+                   winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools"
+
+                 (any Visual Studio edition with that workload also works)
+
+              2. Open a new terminal and re-run this command.
+            """);
+        return 1;
     }
 
     private enum Shell { Cmd, PowerShell }
