@@ -22,4 +22,8 @@
                       LogicalName="operating_system.rb" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="rbmanager.Tests" />
+  </ItemGroup>
+
 </Project>

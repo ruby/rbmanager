@@ -11,11 +11,27 @@ internal static partial class UserPath
 
     // Appends the entry to the per-user PATH if it is not already there,
     // preserving the existing value kind and unexpanded %VAR% references.
+    // RBMANAGER_ENV_KEY redirects the write to an HKCU-relative scratch
+    // subkey (and suppresses the broadcast) so tests never touch the real
+    // PATH; production writes HKCU\Environment and broadcasts the change.
     public static void Ensure(string entry)
     {
+        string? sub = Environment.GetEnvironmentVariable("RBMANAGER_ENV_KEY");
+        if (sub is { Length: > 0 })
+        {
+            using var scratch = Registry.CurrentUser.CreateSubKey(sub, writable: true);
+            Ensure(entry, scratch, broadcast: false);
+            return;
+        }
         using var key = Registry.CurrentUser.OpenSubKey("Environment", writable: true)
             ?? throw new IOException("cannot open HKCU\\Environment");
-        string path = key.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames)
+        Ensure(entry, key, broadcast: true);
+    }
+
+    internal static void Ensure(string entry, RegistryKey environmentKey, bool broadcast)
+    {
+        string path = environmentKey
+            .GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames)
             as string ?? "";
         bool present = path
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -23,13 +39,14 @@ internal static partial class UserPath
         if (present) return;
 
         RegistryValueKind kind;
-        try { kind = key.GetValueKind("Path"); }
+        try { kind = environmentKey.GetValueKind("Path"); }
         catch (IOException) { kind = RegistryValueKind.ExpandString; }
         string updated = path.Length == 0 ? entry : $"{path.TrimEnd(';')};{entry}";
-        key.SetValue("Path", updated, kind);
+        environmentKey.SetValue("Path", updated, kind);
 
-        SendMessageTimeoutW(HwndBroadcast, WmSettingChange, 0, "Environment",
-            SmtoAbortIfHung, 5000, out _);
+        if (broadcast)
+            SendMessageTimeoutW(HwndBroadcast, WmSettingChange, 0, "Environment",
+                SmtoAbortIfHung, 5000, out _);
     }
 
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]

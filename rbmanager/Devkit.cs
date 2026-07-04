@@ -21,15 +21,27 @@ internal static class Devkit
 {
     // vswhere ships at a fixed, versionless path with the VS Installer and
     // is the only supported way to locate installs (including Build-Tools-
-    // only ones, which require -products *).
-    private static readonly string VsWhere = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-        "Microsoft Visual Studio", "Installer", "vswhere.exe");
+    // only ones, which require -products *). Settable (and RBMANAGER_VSWHERE-
+    // seeded) so tests can point it at a stub or a nonexistent path.
+    internal static string VsWhere { get; set; } =
+        Environment.GetEnvironmentVariable("RBMANAGER_VSWHERE") is { Length: > 0 } vsw
+            ? vsw
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Microsoft Visual Studio", "Installer", "vswhere.exe");
+
+    // RBMANAGER_VSDEVCMD short-circuits VS discovery with a caller-supplied
+    // VsDevCmd.bat (a stub in tests), so Enable/Exec are exercisable without
+    // a real Visual Studio install.
+    private static string? ResolveVsDevCmd() =>
+        Environment.GetEnvironmentVariable("RBMANAGER_VSDEVCMD") is { Length: > 0 } stub
+            ? stub
+            : LocateVsDevCmd();
 
     public static int Enable(string? shell)
     {
         Shell target = ParseShell(shell);
-        string? vsdevcmd = LocateVsDevCmd();
+        string? vsdevcmd = ResolveVsDevCmd();
         if (vsdevcmd is null) return WarnMissingToolchain();
         var env = ActivatedDelta(vsdevcmd);
         foreach ((string key, string value) in env)
@@ -43,7 +55,7 @@ internal static class Devkit
 
     public static int Exec(string[] command)
     {
-        string? vsdevcmd = LocateVsDevCmd();
+        string? vsdevcmd = ResolveVsDevCmd();
         if (vsdevcmd is null) return WarnMissingToolchain();
         var delta = ActivatedDelta(vsdevcmd);
         // cmd.exe /c so that .cmd shims (gem, bundle) and PATHEXT resolve
@@ -70,7 +82,7 @@ internal static class Devkit
 
     // Runs VsDevCmd in a clean child and returns only the variables it added
     // or changed relative to our own (i.e. the calling shell's) environment.
-    private static IEnumerable<(string, string)> ActivatedDelta(string vsdevcmd)
+    internal static IEnumerable<(string, string)> ActivatedDelta(string vsdevcmd)
     {
         string cmd = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
@@ -111,7 +123,7 @@ internal static class Devkit
     // Resolves the newest VS install that carries the MSVC toolset and
     // returns its VsDevCmd.bat, or null when no usable toolchain exists
     // (vswhere absent, no matching install, or VsDevCmd.bat missing).
-    private static string? LocateVsDevCmd()
+    internal static string? LocateVsDevCmd()
     {
         if (!File.Exists(VsWhere)) return null;
         var psi = new ProcessStartInfo
@@ -161,29 +173,29 @@ internal static class Devkit
         return 1;
     }
 
-    private enum Shell { Cmd, PowerShell }
+    internal enum Shell { Cmd, PowerShell }
 
-    private static Shell ParseShell(string? shell) => shell switch
+    internal static Shell ParseShell(string? shell) => shell switch
     {
         null or "powershell" or "pwsh" or "ps" => Shell.PowerShell,
         "cmd" or "bat" => Shell.Cmd,
         _ => throw new InvalidOperationException($"unknown shell '{shell}'"),
     };
 
-    private static string Assignment(Shell shell, string key, string value) => shell switch
+    internal static string Assignment(Shell shell, string key, string value) => shell switch
     {
         Shell.Cmd => $"set \"{key}={value}\"",
         // Single-quoted PowerShell literal; ' is escaped by doubling.
         _ => $"$env:{key} = '{value.Replace("'", "''")}'",
     };
 
-    private static string Unset(Shell shell, string key) => shell switch
+    internal static string Unset(Shell shell, string key) => shell switch
     {
         Shell.Cmd => $"set \"{key}=\"",
         _ => $"Remove-Item Env:\\{key} -ErrorAction SilentlyContinue",
     };
 
     // Minimal Windows argument quoting for the cmd /c command line.
-    private static string QuoteArg(string arg) =>
+    internal static string QuoteArg(string arg) =>
         arg.Length > 0 && !arg.Any(char.IsWhiteSpace) ? arg : $"\"{arg}\"";
 }

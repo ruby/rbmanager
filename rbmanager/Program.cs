@@ -6,11 +6,16 @@ namespace RbManager;
 internal static class Program
 {
     // %LOCALAPPDATA%\Ruby, named after the language like pymanager's
-    // %LocalAppData%\Python, not after the tool.
-    private static readonly string Root = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ruby");
-    private static readonly string Rubies = Path.Combine(Root, "rubies");
-    private static readonly string Current = Path.Combine(Root, "current");
+    // %LocalAppData%\Python, not after the tool. Computed per access (not
+    // cached in a static initializer) so RBMANAGER_ROOT can redirect the
+    // whole layout for tests; the Known Folder API ignores %LOCALAPPDATA%.
+    private static string Root =>
+        Environment.GetEnvironmentVariable("RBMANAGER_ROOT") is { Length: > 0 } root
+            ? root
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ruby");
+    private static string Rubies => Path.Combine(Root, "rubies");
+    private static string Current => Path.Combine(Root, "current");
 
     private static async Task<int> Main(string[] args)
     {
@@ -71,7 +76,7 @@ internal static class Program
         return 0;
     }
 
-    private static async Task<int> Install(string source)
+    internal static async Task<int> Install(string source)
     {
         string zip = source;
         string? downloaded = null;
@@ -113,7 +118,7 @@ internal static class Program
         }
     }
 
-    private static int List()
+    internal static int List()
     {
         string? current = CurrentTarget();
         foreach (string dir in InstalledRubies())
@@ -124,14 +129,14 @@ internal static class Program
         return 0;
     }
 
-    private static int Use(string query)
+    internal static int Use(string query)
     {
         SwitchTo(Resolve(query));
         Console.WriteLine($"Now using {CurrentTarget()}");
         return 0;
     }
 
-    private static int Uninstall(string query)
+    internal static int Uninstall(string query)
     {
         string name = Resolve(query);
         if (name == CurrentTarget())
@@ -147,7 +152,7 @@ internal static class Program
     private static IEnumerable<string> InstalledRubies() =>
         Directory.Exists(Rubies) ? Directory.EnumerateDirectories(Rubies).Order() : [];
 
-    private static string Resolve(string query)
+    internal static string Resolve(string query)
     {
         string[] matches = InstalledRubies()
             .Select(Path.GetFileName)
@@ -162,7 +167,7 @@ internal static class Program
         };
     }
 
-    private static string? CurrentTarget()
+    internal static string? CurrentTarget()
     {
         var info = new DirectoryInfo(Current);
         if (!info.Exists || info.LinkTarget is null) return null;
@@ -179,7 +184,7 @@ internal static class Program
     // The binary-package zip carries exactly one root directory named after
     // the runtime (ruby-X.Y.Z-<arch>-mswinNN_MMM); that name becomes the
     // installation directory name.
-    private static string SingleRootDirectory(string zip)
+    internal static string SingleRootDirectory(string zip)
     {
         using var archive = ZipFile.OpenRead(zip);
         var roots = archive.Entries
