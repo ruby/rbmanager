@@ -23,6 +23,9 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
+                ["enable"] => Devkit.Enable(null),
+                ["enable", var shell] => Devkit.Enable(shell),
+                ["exec", .. var command] when command.Length > 0 => Devkit.Exec(command),
                 _ => Usage(),
             };
         }
@@ -43,6 +46,8 @@ internal static class Program
               list                list installed rubies
               use <version>       switch the active ruby
               uninstall <version> remove an installed ruby
+              enable [shell]      print C++ build env to eval (cmd|powershell)
+              exec <command...>   run a command with the C++ build env applied
             """);
         return 2;
     }
