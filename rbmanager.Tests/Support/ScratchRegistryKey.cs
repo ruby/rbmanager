@@ -12,6 +12,9 @@ internal sealed class ScratchRegistryKey : IDisposable
 
     public RegistryKey Key { get; }
 
+    // The HKCU-relative path, in the form the RBMANAGER_* seams expect.
+    public string SubKeyPath => _sub;
+
     public ScratchRegistryKey()
     {
         _sub = $@"{Container}\{Guid.NewGuid():N}";

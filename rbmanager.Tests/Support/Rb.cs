@@ -12,13 +12,15 @@ internal static class Rb
     public static string Exe { get; } = ResolveExe();
 
     public static RbResult Run(string root, string? envKey, params string[] args) =>
-        RunExe(Exe, root, envKey, args);
+        RunExe(Exe, root, envKey, null, args);
 
-    public static RbResult RunExe(string exe, string root, string? envKey, params string[] args)
+    public static RbResult RunExe(string exe, string root, string? envKey,
+        IReadOnlyDictionary<string, string>? extraEnv, string[] args)
     {
         var psi = new ProcessStartInfo
         {
             FileName = exe,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -26,9 +28,13 @@ internal static class Rb
         foreach (string a in args) psi.ArgumentList.Add(a);
         psi.Environment["RBMANAGER_ROOT"] = root;
         if (envKey is not null) psi.Environment["RBMANAGER_ENV_KEY"] = envKey;
+        if (extraEnv is not null)
+            foreach ((string k, string v) in extraEnv) psi.Environment[k] = v;
 
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("failed to start rb.exe");
+        // Closed stdin so any prompt reads EOF instead of hanging the test.
+        proc.StandardInput.Close();
         // Read both streams concurrently to avoid a full-buffer deadlock.
         Task<string> outTask = proc.StandardOutput.ReadToEndAsync();
         Task<string> errTask = proc.StandardError.ReadToEndAsync();
