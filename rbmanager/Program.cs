@@ -23,7 +23,8 @@ internal static class Program
         {
             return args switch
             {
-                ["setup"] => Setup(),
+                ["setup"] => await Setup(assumeYes: false),
+                ["setup", "--yes" or "-y"] => await Setup(assumeYes: true),
                 ["install", var source] => await Install(source),
                 ["list"] => List(),
                 ["use", var name] => Use(name),
@@ -46,7 +47,7 @@ internal static class Program
         Console.WriteLine("""
             usage: rb <command>
 
-              setup               copy rb itself onto PATH
+              setup [--yes]       copy rb onto PATH and set up the VC++ runtime
               install <zip|url>   install a ruby binary package from a zip file or URL
               list                list installed rubies
               use <version>       switch the active ruby
@@ -58,8 +59,10 @@ internal static class Program
     }
 
     // Self-installation: rbmanager is distributed as a bare exe, so `setup`
-    // is what makes it durably available instead of an installer.
-    private static int Setup()
+    // is what makes it durably available instead of an installer. It also
+    // checks (and offers to install) the VC++ runtime the official mswin
+    // packages depend on; --yes skips the consent prompt for unattended runs.
+    private static async Task<int> Setup(bool assumeYes)
     {
         string self = Environment.ProcessPath
             ?? throw new InvalidOperationException("cannot determine own path");
@@ -73,7 +76,7 @@ internal static class Program
         UserPath.Ensure(binDir);
         Console.WriteLine($"Installed rb to {dest}");
         Console.WriteLine("Open a new terminal to pick up PATH changes.");
-        return 0;
+        return await VcRedist.Ensure(assumeYes);
     }
 
     internal static async Task<int> Install(string source)
@@ -110,6 +113,7 @@ internal static class Program
 
             Console.WriteLine($"Installed {name}");
             Console.WriteLine("Open a new terminal to pick up PATH changes.");
+            VcRedist.WarnIfMissing();
             return 0;
         }
         finally
@@ -133,6 +137,7 @@ internal static class Program
     {
         SwitchTo(Resolve(query));
         Console.WriteLine($"Now using {CurrentTarget()}");
+        VcRedist.WarnIfMissing();
         return 0;
     }
 
