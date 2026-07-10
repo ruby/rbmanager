@@ -1,0 +1,11 @@
+# Normalize line endings; keep Windows script types CRLF on checkout.
+* text=auto
+
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sh  text eol=lf
+
+*.exe binary
+*.msi binary
+*.zip binary
