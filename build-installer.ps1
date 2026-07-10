@@ -3,7 +3,7 @@
   Build the rbmanager MSI (rb.exe installer).
 
 .DESCRIPTION
-  Publishes rb.exe with NativeAOT and compiles src/rbmanager.wxs with
+  Publishes rb.exe with NativeAOT and compiles installer/rbmanager.wxs with
   WiX v5 into a per-user MSI under dist/. Code signing is a separate,
   later step; the output is unsigned.
 
@@ -53,14 +53,14 @@ $pathGuid = New-UuidV5 $NamespaceGuid 'ruby-windows-installer:path-component:rbm
 $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
 $dotnet = if ($dotnet) { $dotnet.Source } else { 'C:\Program Files\dotnet\dotnet.exe' }
 
-$publishDir = Join-Path $PSScriptRoot 'rbmanager\publish'
+$publishDir = Join-Path $PSScriptRoot 'artifacts\publish\rbmanager'
 $rbExe = Join-Path $publishDir 'rb.exe'
 
 Push-Location $PSScriptRoot
 try {
   if (-not $SkipPublish) {
     Write-Host "Publishing rb.exe ($Arch) ..."
-    & $dotnet publish rbmanager -r "win-$Arch" -c Release -o $publishDir
+    & $dotnet publish src\rbmanager -r "win-$Arch" -c Release -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
   }
   if (-not (Test-Path $rbExe)) { throw "$rbExe not found" }
@@ -72,7 +72,7 @@ try {
   $msi = Join-Path $OutDir "rbmanager-$Version-$Arch.msi"
 
   Write-Host "Building $msi ..."
-  & $dotnet wix build (Join-Path $PSScriptRoot 'src\rbmanager.wxs') `
+  & $dotnet wix build (Join-Path $PSScriptRoot 'installer\rbmanager.wxs') `
     -arch $Arch `
     -d "Version=$Version" `
     -d "UpgradeCode=$upgradeCode" `

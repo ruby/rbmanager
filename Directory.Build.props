@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Centralize all build output under artifacts/ (SDK 8+ layout)
+         instead of per-project bin/ and obj/. -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+  </PropertyGroup>
+</Project>

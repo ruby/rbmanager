@@ -18,7 +18,7 @@
   <ItemGroup>
     <!-- Same CA trust hook the MSI overlay ships; injected into every
          extracted runtime so both install channels behave identically. -->
-    <EmbeddedResource Include="..\overlay\site_ruby\rubygems\defaults\operating_system.rb"
+    <EmbeddedResource Include="..\..\overlay\site_ruby\rubygems\defaults\operating_system.rb"
                       LogicalName="operating_system.rb" />
   </ItemGroup>
 

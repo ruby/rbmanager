@@ -58,14 +58,15 @@ public sealed class PublishFixture : IDisposable
         }
     }
 
-    // Repo root is the path segment before \rbmanager.Tests\.
+    // Repo root is the path segment before \artifacts\ (artifacts output
+    // layout, rooted next to Directory.Build.props).
     private static string? LocateCsproj()
     {
-        string marker = $"{Path.DirectorySeparatorChar}rbmanager.Tests{Path.DirectorySeparatorChar}";
+        string marker = $"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}";
         int idx = AppContext.BaseDirectory.IndexOf(marker, StringComparison.Ordinal);
         if (idx < 0) return null;
         string repoRoot = AppContext.BaseDirectory[..idx];
-        string csproj = Path.Combine(repoRoot, "rbmanager", "rbmanager.csproj");
+        string csproj = Path.Combine(repoRoot, "src", "rbmanager", "rbmanager.csproj");
         return File.Exists(csproj) ? csproj : null;
     }
 

@@ -41,7 +41,7 @@ links because they need no privilege and no Developer Mode.
 Build (requires the .NET 8 SDK and MSVC link.exe):
 
 ```
-dotnet publish rbmanager -r win-x64 -c Release -o rbmanager\publish
+dotnet publish src\rbmanager -r win-x64 -c Release -o artifacts\publish\rbmanager
 ```
 
 This produces a self-contained NativeAOT `rb.exe` (~5 MB) with no
@@ -51,7 +51,7 @@ runtime dependency.
 
 For channels that want a real installer instead of the bare exe,
 `build-installer.ps1` wraps rb.exe in a per-user MSI
-(`src/rbmanager.wxs`, WiX v5):
+(`installer/rbmanager.wxs`, WiX v5):
 
 ```
 .\build-installer.ps1 -Validate
@@ -85,8 +85,12 @@ failure modes all degrade to the previous behavior.
 
 ## Layout
 
-- `rbmanager/` — the version manager (C#, NativeAOT)
+- `src/rbmanager/` — the version manager (C#, NativeAOT)
+- `tests/rbmanager.Tests/` — the xUnit test suite
 - `overlay/` — files layered onto every installed runtime
-- `src/rbmanager.wxs`, `build-installer.ps1` — the rbmanager MSI
+- `installer/rbmanager.wxs`, `build-installer.ps1` — the rbmanager MSI
 - `docs/` — design notes
 - `tools/query.ps1` — dump MSI tables via the WindowsInstaller COM API
+
+Build output goes to `artifacts/` (`UseArtifactsOutput` in
+`Directory.Build.props`), never into the project directories.
