@@ -2,7 +2,6 @@
 # PoC manifest. Before submitting to microsoft/winget-pkgs:
 # - decide the final PackageIdentifier (publisher part is provisional)
 # - publish the exe on GitHub Releases and fix InstallerUrl/InstallerSha256
-# - add a LICENSE file to this repository and align the License field
 PackageIdentifier: RubyLang.rbmanager
 PackageVersion: 0.1.0
 DefaultLocale: en-US
