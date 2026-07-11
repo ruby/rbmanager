@@ -241,7 +241,7 @@ should not depend on it.)
 
 ## Prototype
 
-`rbmanager/Devkit.cs` implements both subcommands, wired into
+`src/rbmanager/Devkit.cs` implements both subcommands, wired into
 `Program.cs`'s dispatch switch as `rb enable [shell]` and
 `rb exec <command...>`. It is ~180 lines, marked as a prototype, and
 covers VS discovery, VsDevCmd activation with env-diffing, the

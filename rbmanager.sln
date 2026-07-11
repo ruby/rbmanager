@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rbmanager", "rbmanager\rbmanager.csproj", "{375503E8-4DA4-40AD-AE41-82FCE6D6742C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rbmanager", "src\rbmanager\rbmanager.csproj", "{375503E8-4DA4-40AD-AE41-82FCE6D6742C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rbmanager.Tests", "rbmanager.Tests\rbmanager.Tests.csproj", "{22625437-7DC7-421A-8896-A994C22A8E7A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rbmanager.Tests", "tests\rbmanager.Tests\rbmanager.Tests.csproj", "{22625437-7DC7-421A-8896-A994C22A8E7A}"
+EndProject
+Project("{930C7802-8A8C-48F9-8165-68863BCCD9DD}") = "rbmanager.Installer", "src\rbmanager.Installer\rbmanager.Installer.wixproj", "{8B9A5A63-3F0A-4E4B-9D0C-6E3A7D9B21C4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -24,5 +26,7 @@ Global
 		{22625437-7DC7-421A-8896-A994C22A8E7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{22625437-7DC7-421A-8896-A994C22A8E7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{22625437-7DC7-421A-8896-A994C22A8E7A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B9A5A63-3F0A-4E4B-9D0C-6E3A7D9B21C4}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{8B9A5A63-3F0A-4E4B-9D0C-6E3A7D9B21C4}.Release|Any CPU.ActiveCfg = Release|x64
 	EndGlobalSection
 EndGlobal

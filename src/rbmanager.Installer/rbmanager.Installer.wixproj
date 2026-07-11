@@ -1,0 +1,16 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <PropertyGroup>
+    <InstallerPlatform Condition="'$(InstallerPlatform)' == ''">x64</InstallerPlatform>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">0.1.0</ProductVersion>
+    <!-- The MSI packages the NativeAOT publish output, not the regular
+         build output, so this cannot come from a ProjectReference. -->
+    <RbExe Condition="'$(RbExe)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\publish\rbmanager\rb.exe</RbExe>
+    <DefineConstants>$(DefineConstants);Version=$(ProductVersion);RbExe=$(RbExe)</DefineConstants>
+    <OutputName>rbmanager-$(ProductVersion)-$(InstallerPlatform)</OutputName>
+    <!-- Per-user package installing into the user profile; these ICEs
+         target per-machine packages. -->
+    <SuppressIces>ICE38;ICE64;ICE91</SuppressIces>
+  </PropertyGroup>
+
+</Project>

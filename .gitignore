@@ -3,9 +3,5 @@ dist/
 *.msi
 *.wixpdb
 *.cab
-rbmanager/bin/
-rbmanager/obj/
-rbmanager/publish/
-rbmanager.Tests/bin/
-rbmanager.Tests/obj/
+artifacts/
 TestResults/

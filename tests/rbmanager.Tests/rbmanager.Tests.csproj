@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\rbmanager\rbmanager.csproj" />
+    <ProjectReference Include="..\..\src\rbmanager\rbmanager.csproj" />
   </ItemGroup>
 
   <ItemGroup>

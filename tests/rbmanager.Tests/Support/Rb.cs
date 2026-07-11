@@ -42,13 +42,14 @@ internal static class Rb
         return new RbResult(proc.ExitCode, outTask.Result, errTask.Result);
     }
 
-    // The test assembly runs from ...\rbmanager.Tests\bin\<cfg>\<tfm>\; the
-    // product's apphost sits at the sibling ...\rbmanager\bin\<cfg>\<tfm>\.
+    // With the artifacts output layout the test assembly runs from
+    // ...\artifacts\bin\rbmanager.Tests\<cfg>\; the product's apphost sits
+    // at the sibling ...\artifacts\bin\rbmanager\<cfg>\.
     private static string ResolveExe()
     {
         string sep = Path.DirectorySeparatorChar.ToString();
         string productDir = AppContext.BaseDirectory.Replace(
-            $"{sep}rbmanager.Tests{sep}bin{sep}", $"{sep}rbmanager{sep}bin{sep}");
+            $"{sep}bin{sep}rbmanager.Tests{sep}", $"{sep}bin{sep}rbmanager{sep}");
         string exe = Path.Combine(productDir, "rb.exe");
         if (!File.Exists(exe))
             throw new FileNotFoundException($"rb.exe not found at {exe}");
