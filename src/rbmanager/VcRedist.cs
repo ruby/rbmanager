@@ -76,11 +76,12 @@ internal static partial class VcRedist
             return 0;
         }
 
-        Console.WriteLine("""
+        Console.WriteLine($"""
             The Microsoft Visual C++ Redistributable (x64) is not installed.
             Ruby's official Windows packages rely on it; without vcruntime140.dll
             ruby.exe cannot start. Installing it affects the whole machine and
-            prompts for administrator approval (UAC).
+            prompts for administrator approval (UAC). Without administrator
+            rights, ask an administrator to install {InstallerUrl} instead.
             """);
         if (!assumeYes)
         {
