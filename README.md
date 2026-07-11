@@ -38,7 +38,24 @@ The active ruby is exposed through an NTFS directory junction
 versions only re-points the junction. Junctions rather than symbolic
 links because they need no privilege and no Developer Mode.
 
-Build (requires the .NET 8 SDK and MSVC link.exe):
+## Build and test
+
+Regular development needs only the .NET 8 SDK (the feature band is
+pinned by `global.json`):
+
+```
+dotnet build rbmanager.sln
+dotnet test rbmanager.sln
+```
+
+Suites that need more than the SDK (Visual Studio, network access)
+skip themselves when the environment lacks it; the category filters
+for running them selectively are listed in
+[docs/test-plan.md](docs/test-plan.md). CI
+(`.github/workflows/ci.yml`) runs the same build and the full suite
+on windows-latest, where VS is present.
+
+Publishing the shipping rb.exe additionally requires MSVC link.exe:
 
 ```
 dotnet publish src\rbmanager -r win-x64 -c Release -o artifacts\publish\rbmanager
@@ -90,6 +107,7 @@ failure modes all degrade to the previous behavior.
 - `tests/rbmanager.Tests/` — the xUnit test suite
 - `overlay/` — files layered onto every installed runtime
 - `src/rbmanager.Installer/`, `build-installer.ps1` — the rbmanager MSI
+- `winget/` — draft winget manifests
 - `docs/` — design notes
 - `tools/query.ps1` — dump MSI tables via the WindowsInstaller COM API
 
