@@ -7,18 +7,21 @@
   uses) and puts that directory on the user PATH, so the MSI and the bare
   exe channel produce identical layouts. Per-user only; no elevation.
 
-  All variable inputs are supplied by build-installer.ps1 as preprocessor
-  variables:
-    Version           numeric x.y.z ProductVersion
-    UpgradeCode       UUIDv5, see docs/upgrade-code.md
-    PathComponentGuid UUIDv5, see docs/upgrade-code.md
-    RbExe             path to the published rb.exe
+  Variable inputs are supplied by rbmanager.Installer.wixproj as
+  preprocessor variables:
+    Version  numeric x.y.z ProductVersion
+    RbExe    path to the published rb.exe
+
+  The UpgradeCode and the PATH component GUID are UUIDv5 values derived
+  from fixed inputs, so they are constants baked in below; the
+  derivation is documented in docs/upgrade-code.md and must never
+  change.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="rbmanager"
            Manufacturer="Ruby Core Team"
            Version="$(var.Version)"
-           UpgradeCode="$(var.UpgradeCode)"
+           UpgradeCode="CAB95EEE-B5A6-52EA-94B3-B4413CE23855"
            Scope="perUser"
            Compressed="yes">
 
@@ -42,7 +45,7 @@
 
     <!-- [RUBYROOT]bin rather than [BINDIR] to avoid a trailing backslash,
          matching the entry UserPath.Ensure writes. -->
-    <Component Id="PathComponent" Directory="BINDIR" Guid="$(var.PathComponentGuid)">
+    <Component Id="PathComponent" Directory="BINDIR" Guid="F786646B-2533-5C48-AD8F-9CCDD8AE4D16">
       <CreateFolder />
       <Environment Id="UpdatePath" Name="PATH" Value="[RUBYROOT]bin"
                    Part="last" Action="set" System="no" Permanent="no" />

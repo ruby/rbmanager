@@ -51,18 +51,19 @@ runtime dependency.
 
 For channels that want a real installer instead of the bare exe,
 `build-installer.ps1` wraps rb.exe in a per-user MSI
-(`installer/rbmanager.wxs`, WiX v5):
+(`src/rbmanager.Installer/`, a WiX v5 SDK-style project):
 
 ```
-.\build-installer.ps1 -Validate
+.\build-installer.ps1
 ```
 
 The MSI installs `rb.exe` into `%LOCALAPPDATA%\Ruby\bin` and puts that
 directory on the user PATH, producing exactly the layout `rb setup`
 creates, and removes both again on uninstall. rbmanager is a single MSI
 product line; see [docs/upgrade-code.md](docs/upgrade-code.md). WiX
-5.0.2 is pinned as a dotnet local tool in `.config/dotnet-tools.json`.
-The output is unsigned; code signing is tracked separately.
+5.0.2 comes in through the `WixToolset.Sdk` NuGet package, and ICE
+validation runs as part of the build. The output is unsigned; code
+signing is tracked separately.
 
 An earlier iteration packaged each Ruby version as its own MSI. That
 direction was dropped in favor of rbmanager; see the git history for
@@ -88,7 +89,7 @@ failure modes all degrade to the previous behavior.
 - `src/rbmanager/` — the version manager (C#, NativeAOT)
 - `tests/rbmanager.Tests/` — the xUnit test suite
 - `overlay/` — files layered onto every installed runtime
-- `installer/rbmanager.wxs`, `build-installer.ps1` — the rbmanager MSI
+- `src/rbmanager.Installer/`, `build-installer.ps1` — the rbmanager MSI
 - `docs/` — design notes
 - `tools/query.ps1` — dump MSI tables via the WindowsInstaller COM API
 

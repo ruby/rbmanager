@@ -4,4 +4,11 @@
          instead of per-project bin/ and obj/. -->
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
+
+  <!-- WixToolset.Sdk does not implement the artifacts output layout,
+       so route .wixproj output there explicitly. -->
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.wixproj'">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
 </Project>
