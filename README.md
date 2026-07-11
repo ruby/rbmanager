@@ -21,16 +21,25 @@ after the language (`%LOCALAPPDATA%\Ruby`, like `%LocalAppData%\Python`)
 rather than after the tool. rbmanager remains the product name.
 
 ```
-rb setup               copy rb itself onto PATH
-rb install <zip|url>   install a ruby binary package
-rb list                list installed rubies
-rb use <version>       switch the active ruby
-rb uninstall <version> remove an installed ruby
+rb setup [--yes]        copy rb onto PATH and set up the VC++ runtime
+rb install <zip|url>    install a ruby binary package
+rb list                 list installed rubies
+rb use <version>        switch the active ruby
+rb uninstall <version>  remove an installed ruby
+rb enable [shell]       print C++ build env to eval (cmd|powershell)
+rb exec <command...>    run a command with the C++ build env applied
 ```
 
 rb is a bare exe; `setup` copies it to
 `%LOCALAPPDATA%\Ruby\bin` and puts that directory on the user PATH,
-which stands in for an installer until a winget manifest exists.
+which stands in for an installer until the winget and MSI channels
+ship. It also checks for the VC++ 2015-2022 redistributable the
+official mswin packages depend on, and offers to download and install
+it (signature-verified, elevated); `--yes` skips the consent prompt.
+
+`enable` and `exec` are the `ridk enable` equivalent for building
+C extension gems with MSVC; see
+[docs/devkit-enable.md](docs/devkit-enable.md).
 
 The active ruby is exposed through an NTFS directory junction
 `%LOCALAPPDATA%\Ruby\current`, and `install` appends
@@ -61,7 +70,7 @@ Publishing the shipping rb.exe additionally requires MSVC link.exe:
 dotnet publish src\rbmanager -r win-x64 -c Release -o artifacts\publish\rbmanager
 ```
 
-This produces a self-contained NativeAOT `rb.exe` (~5 MB) with no
+This produces a self-contained NativeAOT `rb.exe` (~6 MB) with no
 runtime dependency.
 
 ## rbmanager MSI
