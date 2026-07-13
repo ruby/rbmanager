@@ -12,7 +12,7 @@ public class SmokeTests
     [Fact]
     public void InternalsAreVisible()
     {
-        Assert.Equal(Devkit.Shell.Cmd, Devkit.ParseShell("cmd"));
-        Assert.Equal(Devkit.Shell.PowerShell, Devkit.ParseShell(null));
+        Assert.Equal(Msvc.Shell.Cmd, Msvc.ParseShell("cmd"));
+        Assert.Equal(Msvc.Shell.PowerShell, Msvc.ParseShell(null));
     }
 }

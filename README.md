@@ -21,13 +21,13 @@ after the language (`%LOCALAPPDATA%\Ruby`, like `%LocalAppData%\Python`)
 rather than after the tool. rbmanager remains the product name.
 
 ```
-rb setup [--yes]        copy rb onto PATH and set up the VC++ runtime
-rb install <zip|url>    install a ruby binary package
-rb list                 list installed rubies
-rb use <version>        switch the active ruby
-rb uninstall <version>  remove an installed ruby
-rb enable [shell]       print C++ build env to eval (cmd|powershell)
-rb exec <command...>    run a command with the C++ build env applied
+rb setup [--yes]           copy rb onto PATH and set up the VC++ runtime
+rb install <zip|url>       install a ruby binary package
+rb list                    list installed rubies
+rb use <version>           switch the active ruby
+rb uninstall <version>     remove an installed ruby
+rb msvc enable [shell]     print the MSVC build env to eval (cmd|powershell)
+rb msvc exec <command...>  run a command with the MSVC build env applied
 ```
 
 rb is a bare exe; `setup` copies it to
@@ -37,9 +37,9 @@ ship. It also checks for the VC++ 2015-2022 redistributable the
 official mswin packages depend on, and offers to download and install
 it (signature-verified, elevated); `--yes` skips the consent prompt.
 
-`enable` and `exec` are the `ridk enable` equivalent for building
-C extension gems with MSVC; see
-[docs/devkit-enable.md](docs/devkit-enable.md).
+`msvc enable` and `msvc exec` activate an installed Visual Studio (or
+Build Tools) MSVC toolchain for building C extension gems; see
+[docs/msvc-enable.md](docs/msvc-enable.md).
 
 The active ruby is exposed through an NTFS directory junction
 `%LOCALAPPDATA%\Ruby\current`, and `install` appends

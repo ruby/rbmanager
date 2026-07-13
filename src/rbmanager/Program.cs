@@ -29,9 +29,9 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                ["enable"] => Devkit.Enable(null),
-                ["enable", var shell] => Devkit.Enable(shell),
-                ["exec", .. var command] when command.Length > 0 => Devkit.Exec(command),
+                ["msvc", "enable"] => Msvc.Enable(null),
+                ["msvc", "enable", var shell] => Msvc.Enable(shell),
+                ["msvc", "exec", .. var command] when command.Length > 0 => Msvc.Exec(command),
                 _ => Usage(),
             };
         }
@@ -47,13 +47,13 @@ internal static class Program
         Console.WriteLine("""
             usage: rb <command>
 
-              setup [--yes]       copy rb onto PATH and set up the VC++ runtime
-              install <zip|url>   install a ruby binary package from a zip file or URL
-              list                list installed rubies
-              use <version>       switch the active ruby
-              uninstall <version> remove an installed ruby
-              enable [shell]      print C++ build env to eval (cmd|powershell)
-              exec <command...>   run a command with the C++ build env applied
+              setup [--yes]          copy rb onto PATH and set up the VC++ runtime
+              install <zip|url>      install a ruby binary package from a zip file or URL
+              list                   list installed rubies
+              use <version>          switch the active ruby
+              uninstall <version>    remove an installed ruby
+              msvc enable [shell]    print the MSVC build env to eval (cmd|powershell)
+              msvc exec <command...> run a command with the MSVC build env applied
             """);
         return 2;
     }

@@ -1,4 +1,4 @@
-# A `ridk enable` equivalent for the mswin packages
+# Activating the MSVC build environment for the mswin packages
 
 ## Problem
 
@@ -35,14 +35,14 @@ Studio.
 - `VsDevCmd.bat -arch=amd64 -host_arch=amd64` puts `cl`/`nmake`/`link`
   on PATH and sets `INCLUDE`/`LIB`/`LIBPATH`/`VCToolsRedistDir`
   (exit 0).
-- Under the prototype `rb exec`, mkmf's `find_executable('cl')`
+- Under the prototype `rb msvc exec`, mkmf's `find_executable('cl')`
   succeeds, and a trivial C extension compiles, links, and loads:
   `extconf.rb` -> `nmake` -> `require './hello.so'` returns a value from
   native code.
-- `rb enable powershell | Invoke-Expression` puts `cl` on the current
-  session's PATH (ridk parity).
+- `rb msvc enable powershell | Invoke-Expression` puts `cl` on the
+  current session's PATH.
 
-The conclusion is that a compiler-only `rb enable`/`rb exec` is fully
+The conclusion is that a compiler-only `rb msvc enable`/`rb msvc exec` is fully
 feasible and small. The interesting decisions are the command surface
 and how far to go on third-party dependency headers.
 
@@ -53,40 +53,40 @@ environment. `ridk enable` only works because it is a shell function
 whose output is eval'd into the current shell. Any activation feature
 must work around this, and the two useful shapes are:
 
-1. **`rb exec <command...>` (primary).** Spawns a child process with the
-   toolchain and active ruby already applied. No parent mutation, so
-   nothing to eval and nothing to get wrong. `rb exec gem install
-   nokogiri` just works. This is the recommended path for the common
-   case (one build command) and for scripts/CI, and it is the surface
-   that is bulletproof by construction.
+1. **`rb msvc exec <command...>` (primary).** Spawns a child process
+   with the toolchain and active ruby already applied. No parent
+   mutation, so nothing to eval and nothing to get wrong. `rb msvc exec
+   gem install nokogiri` just works. This is the recommended path for
+   the common case (one build command) and for scripts/CI, and it is
+   the surface that is bulletproof by construction.
 
-2. **`rb enable [cmd|powershell|pwsh]` (ridk parity).** Prints
+2. **`rb msvc enable [cmd|powershell|pwsh]` (shell activation).** Prints
    environment assignments for the user to eval into the current shell,
    for interactive sessions where several build commands follow:
 
    ```
    rem cmd
-   for /f "delims=" %L in ('rb enable cmd') do @%L
+   for /f "delims=" %L in ('rb msvc enable cmd') do @%L
 
    # PowerShell / pwsh
-   rb enable powershell | Invoke-Expression
+   rb msvc enable powershell | Invoke-Expression
    ```
 
-   This mirrors `ridk enable` and is the escape hatch for users who want
-   a persistently activated shell rather than a per-command wrapper.
+   This is the escape hatch for users who want a persistently activated
+   shell rather than a per-command wrapper.
 
-Recommend shipping both. `rb exec` is the headline; `rb enable` covers
-the interactive workflow ridk users expect. A third option, writing a
+Recommend shipping both. `rb msvc exec` is the headline; `rb msvc
+enable` covers the interactive workflow. A third option, writing a
 dot-sourced activation script into `%LOCALAPPDATA%\Ruby`, adds a file to
 manage and a staleness problem (the resolved VS path is baked in) for no
-gain over `rb enable`, so it is not recommended.
+gain over `rb msvc enable`, so it is not recommended.
 
-The parent-shell-mutation constraint is handled cleanly: `rb exec`
+The parent-shell-mutation constraint is handled cleanly: `rb msvc exec`
 sidesteps it entirely by owning the child's environment;
-`rb enable` respects it by making the caller responsible for the eval,
-exactly as ridk does.
+`rb msvc enable` respects it by making the caller responsible for the
+eval.
 
-### Shell selection for `rb enable`
+### Shell selection for `rb msvc enable`
 
 The prototype takes the shell as an explicit argument and defaults to
 PowerShell (the common interactive shell on modern Windows). Auto-
@@ -147,12 +147,12 @@ cmd /s /c "call "<installationPath>\Common7\Tools\VsDevCmd.bat" \
 child inherits the calling shell's environment, so diffing the captured
 `set` output against rb's own environment yields exactly the variables
 VsDevCmd added or changed (PATH, INCLUDE, LIB, LIBPATH,
-VCToolsRedistDir, and the VSCMD bookkeeping vars). `rb exec` applies
-that delta to the child it spawns; `rb enable` prints it as `set
+VCToolsRedistDir, and the VSCMD bookkeeping vars). `rb msvc exec`
+applies that delta to the child it spawns; `rb msvc enable` prints it as `set
 "K=V"` (cmd) or `$env:K = '...'` (PowerShell, single-quoted literal
 with `'` doubled).
 
-`rb exec` routes the user command through `cmd /s /c` so that `.cmd`
+`rb msvc exec` routes the user command through `cmd /s /c` so that `.cmd`
 shims (`gem`, `bundle`) and PATHEXT resolve the way they would if the
 user had typed the command directly; a bare `CreateProcess` would not
 find `gem` (it is `gem.cmd`).
@@ -166,8 +166,8 @@ name and the loader refuses to find it in the current directory, which
 surfaces as the same cryptic "install development tools first" error
 even though the compiler is present.
 
-Both surfaces clear it for the activated environment: `rb exec` removes
-the variable from the child's environment block, and `rb enable` emits
+Both surfaces clear it for the activated environment: `rb msvc exec`
+removes the variable from the child's environment block, and `rb msvc enable` emits
 the unset (`set "NoDefault...="` for cmd, `Remove-Item Env:\NoDefault...`
 for PowerShell). This is cheap insurance against a confusing failure and
 is recommended.
@@ -194,7 +194,7 @@ and no opt-dir pointing at any such tree on the destination machine.
 
 ### Recommendation: phase 1 is compiler-only
 
-Ship `rb exec`/`rb enable` as compiler-only first, and document the
+Ship `rb msvc exec`/`rb msvc enable` as compiler-only first, and document the
 dependency-linking limitation. This unblocks the large class of pure-C
 gems immediately, is small and low-risk, and does not commit rbmanager
 to shipping or versioning a pile of vcpkg dev files whose provenance and
@@ -241,20 +241,20 @@ should not depend on it.)
 
 ## Prototype
 
-`src/rbmanager/Devkit.cs` implements both subcommands, wired into
-`Program.cs`'s dispatch switch as `rb enable [shell]` and
-`rb exec <command...>`. It is ~180 lines, marked as a prototype, and
+`src/rbmanager/Msvc.cs` implements both subcommands, wired into
+`Program.cs`'s dispatch switch as `rb msvc enable [shell]` and
+`rb msvc exec <command...>`. It is ~180 lines, marked as a prototype, and
 covers VS discovery, VsDevCmd activation with env-diffing, the
 `NoDefaultCurrentDirectoryInExePath` clearing, and the per-shell output.
 It is compiler-only (phase 1). What was exercised:
 
-- `rb enable powershell|cmd` prints correct assignments; the PowerShell
-  form activates a live session via `| Invoke-Expression`.
-- `rb exec ruby -rmkmf -e "find_executable('cl')"` finds the compiler.
-- `rb exec` drives a full `extconf.rb` -> `nmake` -> load of a native
+- `rb msvc enable powershell|cmd` prints correct assignments; the
+  PowerShell form activates a live session via `| Invoke-Expression`.
+- `rb msvc exec ruby -rmkmf -e "find_executable('cl')"` finds the compiler.
+- `rb msvc exec` drives a full `extconf.rb` -> `nmake` -> load of a native
   extension.
 
-A `gem install msgpack` under `rb exec` compiled several files (proving
+A `gem install msgpack` under `rb msvc exec` compiled several files (proving
 the toolchain is live) before failing on an
 `RBIMPL_UNREACHABLE_RETURN`/`C2059` macro error in msgpack 1.8.3 against
 Ruby 4.0's headers. That is an upstream gem/source incompatibility, not
@@ -263,14 +263,14 @@ appearing on the compile line.
 
 ## Open questions
 
-1. Auto-detect the parent shell for `rb enable`, or keep the explicit
+1. Auto-detect the parent shell for `rb msvc enable`, or keep the explicit
    argument with a default? (Prototype: explicit, default PowerShell.)
-2. Should `rb exec`/`rb enable` also guarantee the active ruby's
+2. Should `rb msvc exec`/`rb msvc enable` also guarantee the active ruby's
    `current\bin` is on PATH, or continue to rely on `install` having put
    it there? (Prototype relies on install.)
 3. Phase 2 trigger: is dependency-linking demand high enough to justify
    bundling vcpkg dev files, and should the dev-file tree ship inside
    the mswin package or as a separate rbmanager-managed download?
 4. Should a leaked/nonexistent `--with-opt-dir` in `configure_args` be
-   actively stripped or overridden by `rb enable` even in phase 1, to
+   actively stripped or overridden by `rb msvc enable` even in phase 1, to
    remove the confusing `-I<nonexistent>` from every compile line?

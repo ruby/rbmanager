@@ -2,13 +2,13 @@ using RbManager.Tests.Support;
 
 namespace RbManager.Tests;
 
-// Plan 4.9: Devkit activation exercised with a stub VsDevCmd.bat, so no real
-// Visual Studio is needed. Serial (env vars, console, the Devkit.VsWhere
+// Plan 4.9: Msvc activation exercised with a stub VsDevCmd.bat, so no real
+// Visual Studio is needed. Serial (env vars, console, the Msvc.VsWhere
 // static). The stub is invoked by ActivatedDelta as
 // `cmd /s /c "call "stub" -arch=... -no_logo && set"`.
 [Trait("Category", "Integration")]
 [Collection(Serial.Name)]
-public class DevkitActivationTests
+public class MsvcActivationTests
 {
     private const string NoDefault = "NoDefaultCurrentDirectoryInExePath";
     private const string PwshUnset =
@@ -23,7 +23,7 @@ public class DevkitActivationTests
     }
 
     private static Dictionary<string, string> Delta(string bat) =>
-        Devkit.ActivatedDelta(bat)
+        Msvc.ActivatedDelta(bat)
             .ToDictionary(t => t.Item1, t => t.Item2, StringComparer.OrdinalIgnoreCase);
 
     [Fact] // case 61
@@ -66,7 +66,7 @@ public class DevkitActivationTests
         string bat = Bat(tmp, "exit /b 3");
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => Devkit.ActivatedDelta(bat).ToList());
+            () => Msvc.ActivatedDelta(bat).ToList());
         Assert.Equal("VsDevCmd activation failed", ex.Message);
     }
 
@@ -78,7 +78,7 @@ public class DevkitActivationTests
         env.Set("RBMANAGER_VSDEVCMD", Bat(tmp, "set RB_TEST_NEW=hello"));
         using var cap = new ConsoleCapture();
 
-        int rc = Devkit.Enable("powershell");
+        int rc = Msvc.Enable("powershell");
 
         Assert.Equal(0, rc);
         Assert.Contains("$env:RB_TEST_NEW = 'hello'", cap.OutLines);
@@ -93,7 +93,7 @@ public class DevkitActivationTests
         env.Set("RBMANAGER_VSDEVCMD", Bat(tmp, "set RB_TEST_NEW=hello"));
         using var cap = new ConsoleCapture();
 
-        int rc = Devkit.Enable("cmd");
+        int rc = Msvc.Enable("cmd");
 
         Assert.Equal(0, rc);
         Assert.Contains("set \"RB_TEST_NEW=hello\"", cap.OutLines);
@@ -110,7 +110,7 @@ public class DevkitActivationTests
 
         using (var cap = new ConsoleCapture())
         {
-            int rc = Devkit.Enable("powershell");
+            int rc = Msvc.Enable("powershell");
             Assert.Equal(1, rc);
             Assert.Equal("", cap.Out);
             Assert.Contains("winget install Microsoft.VisualStudio.2022.BuildTools", cap.Err);
@@ -118,7 +118,7 @@ public class DevkitActivationTests
 
         using (var cap = new ConsoleCapture())
         {
-            int rc = Devkit.Exec(["cmd", "/c", "echo", "x"]);
+            int rc = Msvc.Exec(["cmd", "/c", "echo", "x"]);
             Assert.Equal(1, rc);
             Assert.Equal("", cap.Out);
             Assert.Contains("no Visual Studio C++ toolchain found", cap.Err);
@@ -133,7 +133,7 @@ public class DevkitActivationTests
         env.Set("RBMANAGER_VSDEVCMD", null);
         using var vsw = new VsWhereScope(tmp.At("no-vswhere.exe"));
 
-        Assert.Null(Devkit.LocateVsDevCmd());
+        Assert.Null(Msvc.LocateVsDevCmd());
     }
 
     [Fact] // case 68: Exec applies the delta and drops NoDefault... in the child
@@ -146,7 +146,7 @@ public class DevkitActivationTests
         string dump = Bat(tmp, "set > \"%~1\"");
         string outFile = tmp.At("env.txt");
 
-        int rc = Devkit.Exec([dump, outFile]);
+        int rc = Msvc.Exec([dump, outFile]);
 
         Assert.Equal(0, rc);
         string dumped = File.ReadAllText(outFile);
@@ -161,7 +161,7 @@ public class DevkitActivationTests
         using var env = new EnvScope();
         env.Set("RBMANAGER_VSDEVCMD", Bat(tmp)); // no-op stub, exits 0
 
-        int rc = Devkit.Exec(["cmd", "/c", "exit", "7"]);
+        int rc = Msvc.Exec(["cmd", "/c", "exit", "7"]);
 
         Assert.Equal(7, rc);
     }
@@ -176,7 +176,7 @@ public class DevkitActivationTests
         using var env = new EnvScope();
         env.Set("RBMANAGER_VSDEVCMD", Bat(tmp, $"set PATH={shimDir};%PATH%"));
 
-        int rc = Devkit.Exec(["hello"]);
+        int rc = Msvc.Exec(["hello"]);
 
         Assert.Equal(42, rc);
     }
@@ -190,7 +190,7 @@ public class DevkitActivationTests
         string echo = Bat(tmp, ">\"%~2\" echo %~1");
         string outFile = tmp.At("arg.txt");
 
-        int rc = Devkit.Exec([echo, "a b c", outFile]);
+        int rc = Msvc.Exec([echo, "a b c", outFile]);
 
         Assert.Equal(0, rc);
         Assert.Equal("a b c", File.ReadAllText(outFile).Trim());
