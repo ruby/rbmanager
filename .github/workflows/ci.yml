@@ -22,3 +22,24 @@ jobs:
       # The hosted image has VS with MSVC, so the RequiresVS and Publish
       # suites run for real instead of skipping.
       - run: dotnet test rbmanager.sln --no-build
+
+  # NativeAOT publish for both shipping targets; win-arm64 cross-compiles
+  # on the x64 runner. CI artifacts are unsigned; signing happens only in
+  # the release workflow (docs/code-signing.md).
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        rid: [win-x64, win-arm64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet publish src/rbmanager -r ${{ matrix.rid }} -c Release -o artifacts/publish/${{ matrix.rid }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rb-${{ matrix.rid }}-unsigned
+          path: artifacts/publish/${{ matrix.rid }}/rb.exe
+          if-no-files-found: error
