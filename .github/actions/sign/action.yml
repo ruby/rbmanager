@@ -1,0 +1,78 @@
+# The single seam for release code signing. The provider today is
+# SignPath Foundation; the planned migration to Azure Artifact Signing
+# (or an OV certificate on a cloud HSM) replaces the internals of this
+# action without touching the release workflow. See docs/code-signing.md.
+
+name: Sign release binaries
+description: >-
+  Sends the unsigned release artifact to the code-signing provider and
+  places the signed files in the output directory. When the provider
+  credentials are not configured, the binaries pass through unsigned
+  with a workflow warning.
+
+inputs:
+  github-artifact-id:
+    description: >-
+      Id of the unsigned artifact uploaded with actions/upload-artifact
+      (steps.<id>.outputs.artifact-id).
+    required: true
+  github-artifact-name:
+    description: >-
+      Name of the same artifact, used by the unsigned pass-through.
+    required: true
+  output-directory:
+    description: Directory where the signed files are placed.
+    required: true
+  signpath-api-token:
+    description: SignPath REST API token. Leave empty to skip signing.
+    required: false
+    default: ''
+  signpath-organization-id:
+    description: SignPath organization id.
+    required: false
+    default: ''
+  signpath-project-slug:
+    description: SignPath project slug.
+    required: false
+    default: ''
+  signpath-signing-policy-slug:
+    description: SignPath signing policy slug.
+    required: false
+    default: 'release-signing'
+
+outputs:
+  signed:
+    description: >-
+      "true" when the binaries were signed, "false" when the unsigned
+      pass-through was taken.
+    value: ${{ inputs.signpath-api-token != '' }}
+
+runs:
+  using: composite
+  steps:
+    - name: Submit the SignPath signing request
+      if: inputs.signpath-api-token != ''
+      uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
+      with:
+        api-token: ${{ inputs.signpath-api-token }}
+        organization-id: ${{ inputs.signpath-organization-id }}
+        project-slug: ${{ inputs.signpath-project-slug }}
+        signing-policy-slug: ${{ inputs.signpath-signing-policy-slug }}
+        github-artifact-id: ${{ inputs.github-artifact-id }}
+        wait-for-completion: true
+        # Release signing needs a manual approval in the SignPath UI,
+        # so leave ample time before giving up.
+        wait-for-completion-timeout-in-seconds: '3600'
+        output-artifact-directory: ${{ inputs.output-directory }}
+
+    - name: Warn that signing is skipped
+      if: inputs.signpath-api-token == ''
+      shell: pwsh
+      run: Write-Output "::warning::Signing credentials are not configured; the release binaries stay UNSIGNED. See docs/code-signing.md."
+
+    - name: Pass the unsigned binaries through
+      if: inputs.signpath-api-token == ''
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.github-artifact-name }}
+        path: ${{ inputs.output-directory }}

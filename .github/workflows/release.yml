@@ -1,0 +1,119 @@
+# Builds rb.exe from a version tag, signs it, and attaches the binaries
+# and their SHA-256 checksums to a GitHub release. Signing is described
+# in docs/code-signing.md; when the signing credentials are not
+# configured, the release is created as an unsigned draft instead.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Derive the version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          "version=$('${{ github.ref_name }}'.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
+      - run: dotnet test rbmanager.sln
+
+      # win-arm64 cross-compiles on the x64 runner; the hosted image
+      # carries the ARM64 MSVC tools.
+      - name: Publish rb.exe for win-x64 and win-arm64
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            dotnet publish src/rbmanager -r $rid -c Release `
+              -p:Version=${{ steps.version.outputs.version }} `
+              -o artifacts/publish/$rid
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          New-Item -ItemType Directory unsigned | Out-Null
+          Copy-Item artifacts/publish/win-x64/rb.exe unsigned/rb-x64.exe
+          Copy-Item artifacts/publish/win-arm64/rb.exe unsigned/rb-arm64.exe
+
+      - name: Upload the unsigned binaries
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: rb-unsigned
+          path: unsigned/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 90
+    # The environment holds the signing credentials and can require a
+    # manual approval before the job starts.
+    environment: release-signing
+    permissions:
+      contents: write # create the release
+      actions: read # let the signing provider download the artifact
+    steps:
+      # The checkout only provides ./.github/actions/sign; the binaries
+      # come from the build job's artifact.
+      - uses: actions/checkout@v5
+
+      - name: Sign rb.exe
+        id: sign
+        uses: ./.github/actions/sign
+        with:
+          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
+          github-artifact-name: rb-unsigned
+          output-directory: signed
+          signpath-api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          signpath-organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          signpath-project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signpath-signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+
+      - name: Verify the Authenticode signatures
+        if: steps.sign.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          foreach ($exe in Get-ChildItem signed -Filter *.exe) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            Write-Output "$($exe.Name): $($sig.Status) ($($sig.SignerCertificate.Subject))"
+            if ($sig.Status -ne 'Valid') { exit 1 }
+          }
+
+      - name: Generate the SHA-256 checksums
+        shell: pwsh
+        run: |
+          foreach ($exe in Get-ChildItem signed -Filter *.exe) {
+            $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($exe.Name)" | Out-File -Encoding ascii "$($exe.FullName).sha256"
+          }
+
+      - name: Create the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ghArgs = @('release', 'create', '${{ github.ref_name }}',
+            '--title', 'rbmanager ${{ needs.build.outputs.version }}',
+            '--generate-notes', '--verify-tag')
+          if ('${{ steps.sign.outputs.signed }}' -ne 'true') {
+            # Never publish unsigned binaries silently; leave the
+            # decision to a human.
+            $ghArgs += '--draft'
+            Write-Output "::warning::Created a DRAFT release with unsigned binaries."
+          }
+          $ghArgs += Get-ChildItem signed -File | ForEach-Object FullName
+          gh @ghArgs
