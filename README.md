@@ -15,7 +15,8 @@ more than that zip layout.
 rbmanager is a small version manager in the spirit of Python's install
 manager (PEP 773): it fetches a binary-package zip, extracts it under
 `%LOCALAPPDATA%\Ruby\rubies\`, and makes it available on PATH. No
-elevation is required at any point. Both names mirror pymanager: the
+elevation is required for rbmanager itself or for the per-user rubies;
+see below for the one exception. Both names mirror pymanager: the
 command is `rb` as pymanager's is `py`, and the data directory is named
 after the language (`%LOCALAPPDATA%\Ruby`, like `%LocalAppData%\Python`)
 rather than after the tool. rbmanager remains the product name.
@@ -40,6 +41,17 @@ it (signature-verified, elevated); `--yes` skips the consent prompt.
 `enable` and `exec` are the `ridk enable` equivalent for building
 C extension gems with MSVC; see
 [docs/devkit-enable.md](docs/devkit-enable.md).
+
+The official mswin packages deliberately do not bundle
+vcruntime140.dll (https://bugs.ruby-lang.org/issues/22180) and expect
+the machine-wide Microsoft Visual C++ Redistributable instead. That
+component installs per-machine, which is the one exception to the
+no-elevation rule: when it is missing, `rb setup` offers to download
+and install it through a single UAC prompt. Declining the consent
+question or the UAC prompt leaves rbmanager and the installed rubies
+intact; `rb setup` prints the installer URL so an administrator can
+install it manually, and `rb install` / `rb use` merely warn that
+ruby.exe cannot start until the runtime is present.
 
 The active ruby is exposed through an NTFS directory junction
 `%LOCALAPPDATA%\Ruby\current`, and `install` appends

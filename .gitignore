@@ -1,5 +1,6 @@
 _build/
 dist/
+artifacts/
 *.msi
 *.wixpdb
 *.cab
