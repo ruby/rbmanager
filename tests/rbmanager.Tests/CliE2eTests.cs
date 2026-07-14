@@ -34,8 +34,9 @@ public class CliE2eTests
     [Theory] // case 36
     [InlineData("install")]
     [InlineData("use")]
-    [InlineData("exec")]
-    public void MissingRequiredArgument_Usage_Exit2(string command)
+    [InlineData("msvc")]
+    [InlineData("msvc", "exec")]
+    public void MissingRequiredArgument_Usage_Exit2(params string[] command)
     {
         using var sb = new E2eSandbox();
         RbResult r = sb.Run(command);

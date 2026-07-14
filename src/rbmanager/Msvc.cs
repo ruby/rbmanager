@@ -2,22 +2,24 @@ using System.Diagnostics;
 
 namespace RbManager;
 
-// PROTOTYPE: a `ridk enable` equivalent for the mswin packages.
+// PROTOTYPE: MSVC build-environment activation for the mswin packages.
 //
-// The official mswin binary carries no devkit, so `gem install <native>`
-// has no compiler on PATH and fails with mkmf's cryptic "install
+// The official mswin binary ships no compiler, so `gem install <native>`
+// has no toolchain on PATH and fails with mkmf's cryptic "install
 // development tools first". This locates an installed Visual Studio (or
-// Build Tools) C++ toolchain, activates it the same way ruby/actions'
-// mswin-build workflow does (VsDevCmd.bat), and exposes that environment
-// two ways:
+// Build Tools) MSVC toolchain, activates it the same way ruby/actions'
+// mswin-build workflow does (VsDevCmd.bat, the script behind Visual
+// Studio's Developer Command Prompt), and exposes that environment two
+// ways:
 //
-//   rb enable [cmd|powershell|pwsh]  print env assignments to eval in the
-//                                    current shell (ridk-parity)
-//   rb exec -- <command...>          run one command with the toolchain
-//                                    already applied (no shell mutation)
+//   rb msvc enable [cmd|powershell|pwsh]  print env assignments to eval
+//                                         in the current shell
+//   rb msvc exec <command...>             run one command with the
+//                                         toolchain already applied
+//                                         (no shell mutation)
 //
-// See docs/devkit-enable.md for the design rationale.
-internal static class Devkit
+// See docs/msvc-enable.md for the design rationale.
+internal static class Msvc
 {
     // vswhere ships at a fixed, versionless path with the VS Installer and
     // is the only supported way to locate installs (including Build-Tools-
@@ -154,7 +156,7 @@ internal static class Devkit
 
     // Fails fast with the setup steps instead of letting mkmf die later
     // with its cryptic "install development tools first". stderr only, so
-    // an eval'd `rb enable` pipeline never swallows it.
+    // an eval'd `rb msvc enable` pipeline never swallows it.
     private static int WarnMissingToolchain()
     {
         Console.Error.WriteLine("""

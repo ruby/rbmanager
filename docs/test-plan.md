@@ -34,8 +34,8 @@ Command surface and contracts:
 | `rb list` | Installed names sorted, active one starred | 0 |
 | `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
-| `rb enable [shell]` | Locate VsDevCmd via vswhere, compute the env delta of activation, print per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. No toolchain: actionable warning on stderr | 0 / 1 |
-| `rb exec <cmd...>` | Same delta applied to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code | child / 1 |
+| `rb msvc enable [shell]` | Locate VsDevCmd via vswhere, compute the env delta of activation, print per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. No toolchain: actionable warning on stderr | 0 / 1 |
+| `rb msvc exec <cmd...>` | Same delta applied to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code | child / 1 |
 | anything else | Usage text | 2 |
 
 Any thrown exception is caught in `Main`, printed as `rb: <message>` to
@@ -63,7 +63,7 @@ stderr, exit 1.
     and deletes it in `Dispose`. Junction targets and junction points
     both live inside it.
   - Tests that redirect `Console.Out`/`Console.Error` or mutate the
-    process environment (`Program`/`Devkit` in-process tests) go in one
+    process environment (`Program`/`Msvc` in-process tests) go in one
     xUnit collection (`[Collection("process-global")]`) so they never
     run in parallel with each other. E2E tests spawn processes and can
     stay parallel because each gets its own root via the env seam.
@@ -97,7 +97,7 @@ Keep this to the minimum below; each item is a mechanical change.
    an env var `RBMANAGER_ENV_KEY` naming an alternative HKCU-relative
    subkey (and suppress the broadcast when it is set) so a full
    `rb install` run never touches the real PATH.
-3. `Devkit` seams. Make `VsWhere` an internal settable property (env
+3. `Msvc` seams. Make `VsWhere` an internal settable property (env
    override `RBMANAGER_VSWHERE` for E2E), and make `ActivatedDelta`,
    `LocateVsDevCmd`, `ParseShell`, `Assignment`, `Unset`, `QuoteArg`
    internal instead of private. `ActivatedDelta(vsdevcmd)` already takes
@@ -208,9 +208,9 @@ Drive the exe built by `dotnet build` (see section 5 for AOT).
 
 34. No args → usage on stdout, exit 2.
 35. Unknown command → usage, exit 2.
-36. `install` with no argument, `use` with no argument, `exec` with no
-    command → usage, exit 2 (the `exec` pattern requires a non-empty
-    command).
+36. `install` with no argument, `use` with no argument, `msvc` with no
+    subcommand, `msvc exec` with no command → usage, exit 2 (the
+    `msvc exec` pattern requires a non-empty command).
 37. Failing command (e.g. `use nosuch`) → stderr starts with `rb: `,
     exit 1, stdout empty.
 38. Full lifecycle: install A → list (A starred) → install B → list (B
@@ -265,7 +265,7 @@ All against `HKCU\Software\rbmanager-tests\<guid>` with
 55. Empty-string existing value → result is exactly the entry, no
     leading `;`.
 
-### 4.8 Devkit: pure helpers — Unit
+### 4.8 Msvc: pure helpers — Unit
 
 56. `ParseShell`: `null`, `powershell`, `pwsh`, `ps` → PowerShell;
     `cmd`, `bat` → Cmd; `zsh` → throws `unknown shell 'zsh'`. (Note
@@ -280,7 +280,7 @@ All against `HKCU\Software\rbmanager-tests\<guid>` with
     quotes; empty string → `""`; tab → quoted; embedded `"` → not
     escaped (pin as known limitation; see 6.7).
 
-### 4.9 Devkit: activation with a stub VsDevCmd — Integration
+### 4.9 Msvc: activation with a stub VsDevCmd — Integration
 
 Stub `.bat` fixture written per test, e.g. sets `RB_TEST_NEW=hello`,
 modifies `PATH` by prefixing a marker dir, sets a var whose value
@@ -300,29 +300,29 @@ contains `=` and one containing non-ASCII, and `exit /b 0`.
 66. `Enable`/`Exec` with the toolchain seam pointing nowhere and
     `VsWhere` set to a nonexistent path → stderr warning containing the
     winget hint, exit 1, stdout empty (the warning must not go to
-    stdout, since `rb enable | Invoke-Expression` would eval it).
+    stdout, since `rb msvc enable | Invoke-Expression` would eval it).
 67. `LocateVsDevCmd` with `VsWhere` nonexistent → null (covered
     behaviorally by 66; also assert directly).
 68. `Exec` with stub: run `cmd /c set` as the command, capture output →
     child sees the stub's variables and does not see
     `NoDefaultCurrentDirectoryInExePath` (set it in the test process
     first).
-69. `Exec` exit-code propagation: `rb exec cmd /c exit 7` → 7.
+69. `Exec` exit-code propagation: `rb msvc exec cmd /c exit 7` → 7.
 70. `Exec` resolves `.cmd` shims: put a `hello.cmd` on the stub-added
-    PATH dir, `exec hello` → runs it (proves the `cmd /s /c` routing
+    PATH dir, `msvc exec hello` → runs it (proves the `cmd /s /c` routing
     and PATHEXT behavior).
 71. `Exec` argument quoting: an argument with spaces survives to the
     child (child echoes `%1`-style or a tiny script writes its argv to
     a file).
 
-### 4.10 Devkit against real Visual Studio — RequiresVS (opt-in)
+### 4.10 Msvc against real Visual Studio — RequiresVS (opt-in)
 
 Skipped unless vswhere resolves an install (use a runtime skip, e.g.
 `Assert.Skip`/`SkippableFact`).
 
 72. `LocateVsDevCmd` returns an existing `VsDevCmd.bat`.
 73. `ActivatedDelta` includes `INCLUDE`, `LIB`, and a `PATH` change.
-74. `rb exec cl` (E2E) exits 0 with cl's banner on stderr.
+74. `rb msvc exec cl` (E2E) exits 0 with cl's banner on stderr.
 
 ### 4.11 AOT publish smoke — E2E (opt-in, slow)
 
@@ -390,6 +390,6 @@ a comment. Each is a product decision to make separately.
 5. Dangling `current` (target deleted out of band) has unpinned
    semantics in `CurrentTarget`/`Uninstall` (case 30 pins it).
 6. `ParseShell` is case-sensitive (`PowerShell` is rejected).
-7. `QuoteArg` does not escape embedded quotes; `rb exec` with an
+7. `QuoteArg` does not escape embedded quotes; `rb msvc exec` with an
    argument containing `"` produces a broken cmd line (case 60 pins
    the helper's output only).
