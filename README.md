@@ -100,12 +100,28 @@ directory on the user PATH, producing exactly the layout `rb setup`
 creates, and removes both again on uninstall. rbmanager is a single MSI
 product line; see [docs/upgrade-code.md](docs/upgrade-code.md). WiX
 5.0.2 comes in through the `WixToolset.Sdk` NuGet package, and ICE
-validation runs as part of the build. The output is unsigned; code
-signing is tracked separately.
+validation runs as part of the build. The MSI is currently unsigned;
+only the release rb.exe is signed (see below).
 
 An earlier iteration packaged each Ruby version as its own MSI. That
 direction was dropped in favor of rbmanager; see the git history for
 the sources and the verification record.
+
+## Releases and code signing
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds
+NativeAOT rb.exe for win-x64 and win-arm64, signs both, and attaches
+them with `.sha256` checksums to a GitHub release. rb.exe is the one
+binary users download directly with a browser, so it faces SmartScreen
+with the Mark of the Web attached; it is the first signing target,
+ahead of the MSI and winget channels. CI builds stay unsigned.
+
+Free code signing provided by [SignPath.io](https://signpath.io),
+certificate by [SignPath Foundation](https://signpath.org). The
+signing step is isolated in `.github/actions/sign` so the provider can
+be replaced later; the signing policy, the repository configuration,
+and the SignPath application checklist are in
+[docs/code-signing.md](docs/code-signing.md).
 
 ## CA trust bootstrap
 

@@ -15,6 +15,18 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- VERSIONINFO on the shipped exe. SmartScreen and the file-properties
+       dialog show these fields, and the code-signing provider requires
+       them to identify the project (docs/code-signing.md). The release
+       workflow overrides Version from the tag. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>rbmanager</Product>
+    <AssemblyTitle>Ruby version manager for Windows</AssemblyTitle>
+    <Company>Ruby Core Team</Company>
+    <Copyright>Copyright (c) 2026 Hiroshi SHIBATA</Copyright>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- Same CA trust hook the MSI overlay ships; injected into every
          extracted runtime so both install channels behave identically. -->
