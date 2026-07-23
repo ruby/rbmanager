@@ -36,6 +36,10 @@ public class CliE2eTests
     [InlineData("use")]
     [InlineData("msvc")]
     [InlineData("msvc", "exec")]
+    [InlineData("msvc", "exec", "--vsver")]
+    [InlineData("msvc", "exec", "--vsver", "2022")]
+    [InlineData("msvc", "enable", "--vsver")]
+    [InlineData("msvc", "enable", "cmd", "pwsh")]
     public void MissingRequiredArgument_Usage_Exit2(params string[] command)
     {
         using var sb = new E2eSandbox();

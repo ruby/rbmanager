@@ -34,8 +34,9 @@ Command surface and contracts:
 | `rb list` | Installed names sorted, active one starred | 0 |
 | `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
-| `rb msvc enable [shell]` | Locate VsDevCmd via vswhere, compute the env delta of activation, print per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. No toolchain: actionable warning on stderr | 0 / 1 |
-| `rb msvc exec <cmd...>` | Same delta applied to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code | child / 1 |
+| `rb msvc enable [--vsver <year>] [shell]` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation, print per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. No toolchain: actionable warning on stderr | 0 / 1 |
+| `rb msvc exec [--vsver <year>] [--] <cmd...>` | Same delta applied to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing | child / 1 |
+| `rb msvc list` | All installs carrying the MSVC toolset, newest first, `*` on the one default resolution would pick. No toolchain: same warning as enable/exec | 0 / 1 |
 | anything else | Usage text | 2 |
 
 Any thrown exception is caught in `Main`, printed as `rb: <message>` to
@@ -210,7 +211,10 @@ Drive the exe built by `dotnet build` (see section 5 for AOT).
 35. Unknown command → usage, exit 2.
 36. `install` with no argument, `use` with no argument, `msvc` with no
     subcommand, `msvc exec` with no command → usage, exit 2 (the
-    `msvc exec` pattern requires a non-empty command).
+    `msvc exec` pattern requires a non-empty command). Malformed msvc
+    options too: `msvc exec --vsver` (no value), `msvc exec --vsver
+    2022` (no command), `msvc enable --vsver` (no value), `msvc enable`
+    with two shells.
 37. Failing command (e.g. `use nosuch`) → stderr starts with `rb: `,
     exit 1, stdout empty.
 38. Full lifecycle: install A → list (A starred) → install B → list (B
@@ -280,6 +284,20 @@ All against `HKCU\Software\rbmanager-tests\<guid>` with
     quotes; empty string → `""`; tab → quoted; embedded `"` → not
     escaped (pin as known limitation; see 6.7).
 
+Added with `--vsver` (numbered after the sections below; 75 was
+already taken by the AOT publish smoke):
+
+76. `EnableArgs`: shell and `--vsver <year>`/`--vsver=<year>` parse in
+    either order; missing/empty value, unknown option, or two shells →
+    null.
+77. `ExecArgs`: options are leading-only; `--` ends option parsing and
+    passes `--vsver`-looking tokens through as the command; an option
+    token after the first command token is command, not option;
+    missing/empty value, unknown leading option, or no remaining
+    command → null.
+78. `VsVerRanges` maps exactly 2017/2019/2022/2026 to the
+    `[15.0,16.0)`-style installationVersion ranges.
+
 ### 4.9 Msvc: activation with a stub VsDevCmd — Integration
 
 Stub `.bat` fixture written per test, e.g. sets `RB_TEST_NEW=hello`,
@@ -315,6 +333,19 @@ contains `=` and one containing non-ASCII, and `exit /b 0`.
     child (child echoes `%1`-style or a tiny script writes its argv to
     a file).
 
+Added with `--vsver`:
+
+79. `EffectiveVsVer`: flag > `RBMANAGER_VSVER` > null (latest); the
+    explicit `latest` value overrides the env var back to newest; an
+    unknown year (flag or env) throws `unknown Visual Studio version`.
+80. `Enable` with a `--vsver` year and the `RBMANAGER_VSDEVCMD` stub
+    set → the stub still short-circuits discovery.
+81. `Enable`/`Exec` with a requested year and `VsWhere` nonexistent →
+    stderr names the year and suggests the matching
+    `Microsoft.VisualStudio.<year>.BuildTools` winget id, exit 1.
+82. `List` with `VsWhere` nonexistent → same warning as enable/exec,
+    exit 1, stdout empty.
+
 ### 4.10 Msvc against real Visual Studio — RequiresVS (opt-in)
 
 Skipped unless vswhere resolves an install (use a runtime skip, e.g.
@@ -323,6 +354,14 @@ Skipped unless vswhere resolves an install (use a runtime skip, e.g.
 72. `LocateVsDevCmd` returns an existing `VsDevCmd.bat`.
 73. `ActivatedDelta` includes `INCLUDE`, `LIB`, and a `PATH` change.
 74. `rb msvc exec cl` (E2E) exits 0 with cl's banner on stderr.
+
+Added with `--vsver`:
+
+83. `LocateVsDevCmd(<year>)` for every installed year resolves a
+    `VsDevCmd.bat` under that year's install path.
+84. `rb msvc list` (E2E) prints one line per install, newest first,
+    `*` on the first, install path on each line.
+85. `rb msvc exec --vsver <newest installed year> cl` (E2E) runs cl.
 
 ### 4.11 AOT publish smoke — E2E (opt-in, slow)
 
