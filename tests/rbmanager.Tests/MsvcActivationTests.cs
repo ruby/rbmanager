@@ -106,6 +106,7 @@ public class MsvcActivationTests
         using var tmp = new TempDir();
         using var env = new EnvScope();
         env.Set("RBMANAGER_VSDEVCMD", null); // force real discovery
+        env.Set("RBMANAGER_VSVER", null);
         using var vsw = new VsWhereScope(tmp.At("no-vswhere.exe"));
 
         using (var cap = new ConsoleCapture())
@@ -179,6 +180,91 @@ public class MsvcActivationTests
         int rc = Msvc.Exec(["hello"]);
 
         Assert.Equal(42, rc);
+    }
+
+    [Fact] // case 79: --vsver flag > RBMANAGER_VSVER > latest (null)
+    public void EffectiveVsVer_FlagBeatsEnvBeatsLatest()
+    {
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSVER", null);
+        Assert.Null(Msvc.EffectiveVsVer(null));
+        Assert.Equal("2022", Msvc.EffectiveVsVer("2022"));
+
+        env.Set("RBMANAGER_VSVER", "2019");
+        Assert.Equal("2019", Msvc.EffectiveVsVer(null));
+        Assert.Equal("2022", Msvc.EffectiveVsVer("2022"));
+        // explicit latest overrides the env var back to newest
+        Assert.Null(Msvc.EffectiveVsVer("latest"));
+    }
+
+    [Fact] // case 79
+    public void EffectiveVsVer_UnknownYear_Throws()
+    {
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSVER", null);
+        var ex = Assert.Throws<InvalidOperationException>(() => Msvc.EffectiveVsVer("2020"));
+        Assert.Equal(
+            "unknown Visual Studio version '2020' (expected 2017, 2019, 2022, 2026, or latest)",
+            ex.Message);
+        // a bad env var fails the same way
+        env.Set("RBMANAGER_VSVER", "vs2022");
+        Assert.Throws<InvalidOperationException>(() => Msvc.EffectiveVsVer(null));
+    }
+
+    [Fact] // case 80: RBMANAGER_VSDEVCMD still short-circuits discovery
+    public void Enable_WithVsVer_StubStillWins()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSDEVCMD", Bat(tmp, "set RB_TEST_NEW=hello"));
+        using var cap = new ConsoleCapture();
+
+        int rc = Msvc.Enable("powershell", "2019");
+
+        Assert.Equal(0, rc);
+        Assert.Contains("$env:RB_TEST_NEW = 'hello'", cap.OutLines);
+    }
+
+    [Fact] // case 81: requested year absent -> names the year, exit 1
+    public void EnableAndExec_RequestedYearMissing_WarnNamesYear()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSDEVCMD", null); // force real discovery
+        env.Set("RBMANAGER_VSVER", null);
+        using var vsw = new VsWhereScope(tmp.At("no-vswhere.exe"));
+
+        using (var cap = new ConsoleCapture())
+        {
+            int rc = Msvc.Enable("powershell", "2019");
+            Assert.Equal(1, rc);
+            Assert.Equal("", cap.Out);
+            Assert.Contains("no Visual Studio 2019 C++ toolchain found", cap.Err);
+            Assert.Contains("winget install Microsoft.VisualStudio.2019.BuildTools", cap.Err);
+        }
+
+        using (var cap = new ConsoleCapture())
+        {
+            int rc = Msvc.Exec(["cmd", "/c", "echo", "x"], "2017");
+            Assert.Equal(1, rc);
+            Assert.Contains("no Visual Studio 2017 C++ toolchain found", cap.Err);
+        }
+    }
+
+    [Fact] // case 82: no vswhere -> list warns like enable/exec, exit 1
+    public void List_NoToolchain_WarnOnStderr()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSVER", null);
+        using var vsw = new VsWhereScope(tmp.At("no-vswhere.exe"));
+        using var cap = new ConsoleCapture();
+
+        int rc = Msvc.List();
+
+        Assert.Equal(1, rc);
+        Assert.Equal("", cap.Out);
+        Assert.Contains("no Visual Studio C++ toolchain found", cap.Err);
     }
 
     [Fact] // case 71: an argument with spaces survives as one argument

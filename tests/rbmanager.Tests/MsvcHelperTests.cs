@@ -70,4 +70,77 @@ public class MsvcHelperTests
         // pin 6.7: embedded quote is not escaped, only wrapped when needed
         Assert.Equal("a\"b", Msvc.QuoteArg("a\"b"));
     }
+
+    private static void AssertEnable(string? shell, string? vsver, params string[] args)
+    {
+        var parsed = Msvc.EnableArgs(args);
+        Assert.NotNull(parsed);
+        Assert.Equal(shell, parsed.Value.Shell);
+        Assert.Equal(vsver, parsed.Value.VsVer);
+    }
+
+    private static void AssertExec(string[] command, string? vsver, params string[] args)
+    {
+        var parsed = Msvc.ExecArgs(args);
+        Assert.NotNull(parsed);
+        Assert.Equal(command, parsed.Value.Command);
+        Assert.Equal(vsver, parsed.Value.VsVer);
+    }
+
+    [Fact] // case 76
+    public void EnableArgs_ShellAndVsVer_EitherOrder()
+    {
+        AssertEnable(null, null);
+        AssertEnable("cmd", null, "cmd");
+        AssertEnable(null, "2019", "--vsver", "2019");
+        AssertEnable("cmd", "2019", "--vsver", "2019", "cmd");
+        AssertEnable("cmd", "2019", "cmd", "--vsver=2019");
+    }
+
+    [Fact] // case 76
+    public void EnableArgs_Malformed_Null()
+    {
+        Assert.Null(Msvc.EnableArgs(["--vsver"]));       // missing value
+        Assert.Null(Msvc.EnableArgs(["--vsver="]));      // empty value
+        Assert.Null(Msvc.EnableArgs(["--bogus"]));       // unknown option
+        Assert.Null(Msvc.EnableArgs(["cmd", "pwsh"]));   // two shells
+    }
+
+    [Fact] // case 77
+    public void ExecArgs_LeadingOptionsThenCommand()
+    {
+        AssertExec(["gem", "install", "json"], null, "gem", "install", "json");
+        AssertExec(["cl"], "2019", "--vsver", "2019", "cl");
+        AssertExec(["cl"], "2019", "--vsver=2019", "cl");
+        AssertExec(["cl"], "2019", "--vsver", "2019", "--", "cl");
+    }
+
+    [Fact] // case 77: after `--` everything is command, never options
+    public void ExecArgs_DoubleDash_PassesOptionsThrough() =>
+        AssertExec(["--vsver", "2019"], null, "--", "--vsver", "2019");
+
+    [Fact] // case 77: options past the first command token stay untouched
+    public void ExecArgs_OptionAfterCommand_IsCommand() =>
+        AssertExec(["ruby", "--vsver", "x"], null, "ruby", "--vsver", "x");
+
+    [Fact] // case 77
+    public void ExecArgs_Malformed_Null()
+    {
+        Assert.Null(Msvc.ExecArgs([]));                    // no command
+        Assert.Null(Msvc.ExecArgs(["--vsver"]));           // missing value
+        Assert.Null(Msvc.ExecArgs(["--vsver", "2019"]));   // option but no command
+        Assert.Null(Msvc.ExecArgs(["--vsver=", "cl"]));    // empty value
+        Assert.Null(Msvc.ExecArgs(["--bogus", "cl"]));     // unknown option
+        Assert.Null(Msvc.ExecArgs(["--"]));                // separator alone
+    }
+
+    [Fact] // case 78: the year map covers exactly the VsDevCmd-era products
+    public void VsVerRanges_YearToInstallationVersionRange()
+    {
+        Assert.Equal("[15.0,16.0)", Msvc.VsVerRanges["2017"]);
+        Assert.Equal("[16.0,17.0)", Msvc.VsVerRanges["2019"]);
+        Assert.Equal("[17.0,18.0)", Msvc.VsVerRanges["2022"]);
+        Assert.Equal("[18.0,19.0)", Msvc.VsVerRanges["2026"]);
+        Assert.Equal(4, Msvc.VsVerRanges.Count);
+    }
 }

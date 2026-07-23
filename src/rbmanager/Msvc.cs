@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace RbManager;
 
@@ -12,15 +13,36 @@ namespace RbManager;
 // Studio's Developer Command Prompt), and exposes that environment two
 // ways:
 //
-//   rb msvc enable [cmd|powershell|pwsh]  print env assignments to eval
+//   rb msvc enable [--vsver <year>] [cmd|powershell|pwsh]
+//                                         print env assignments to eval
 //                                         in the current shell
-//   rb msvc exec <command...>             run one command with the
+//   rb msvc exec [--vsver <year>] [--] <command...>
+//                                         run one command with the
 //                                         toolchain already applied
 //                                         (no shell mutation)
+//   rb msvc list                          list installed VS C++ toolchains
 //
-// See docs/msvc-enable.md for the design rationale.
+// The VS version is picked as --vsver flag > RBMANAGER_VSVER > newest
+// installed. See docs/msvc-enable.md for the design rationale.
 internal static class Msvc
 {
+    // Product year <-> installationVersion major. The year is the
+    // user-facing name (displayName, installer branding, winget ids); the
+    // major is what installationVersion carries. The year cannot be read
+    // from catalog.productLineVersion: the Dev18 series reports "18" there
+    // even though its displayName says 2026.
+    private static readonly (string Year, int Major)[] VsProducts =
+        [("2017", 15), ("2019", 16), ("2022", 17), ("2026", 18)];
+
+    // Product year -> vswhere -version range.
+    internal static readonly IReadOnlyDictionary<string, string> VsVerRanges =
+        VsProducts.ToDictionary(p => p.Year, p => $"[{p.Major}.0,{p.Major + 1}.0)");
+
+    private static string? YearOfVersion(string installationVersion) =>
+        Version.TryParse(installationVersion, out Version? v) &&
+        VsProducts.FirstOrDefault(p => p.Major == v.Major) is { Year: { } year }
+            ? year : null;
+
     // vswhere ships at a fixed, versionless path with the VS Installer and
     // is the only supported way to locate installs (including Build-Tools-
     // only ones, which require -products *). Settable (and RBMANAGER_VSWHERE-
@@ -35,16 +57,88 @@ internal static class Msvc
     // RBMANAGER_VSDEVCMD short-circuits VS discovery with a caller-supplied
     // VsDevCmd.bat (a stub in tests), so Enable/Exec are exercisable without
     // a real Visual Studio install.
-    private static string? ResolveVsDevCmd() =>
+    private static string? ResolveVsDevCmd(string? year) =>
         Environment.GetEnvironmentVariable("RBMANAGER_VSDEVCMD") is { Length: > 0 } stub
             ? stub
-            : LocateVsDevCmd();
+            : LocateVsDevCmd(year);
 
-    public static int Enable(string? shell)
+    // Resolves the effective VS product year: the --vsver flag wins over
+    // RBMANAGER_VSVER; null (or the explicit "latest", useful to override
+    // the env var per invocation) means the newest installed.
+    internal static string? EffectiveVsVer(string? flag)
+    {
+        string? v = flag is { Length: > 0 }
+            ? flag
+            : Environment.GetEnvironmentVariable("RBMANAGER_VSVER");
+        if (v is null or "" or "latest") return null;
+        if (!VsVerRanges.ContainsKey(v))
+            throw new InvalidOperationException(
+                $"unknown Visual Studio version '{v}' " +
+                $"(expected {string.Join(", ", VsProducts.Select(p => p.Year))}, or latest)");
+        return v;
+    }
+
+    // enable arguments: [--vsver <year>] [shell], in either order.
+    // Returns null when the arguments do not parse (caller prints usage).
+    internal static (string? Shell, string? VsVer)? EnableArgs(string[] args)
+    {
+        string? shell = null, vsver = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a == "--vsver")
+            {
+                if (++i >= args.Length) return null;
+                vsver = args[i];
+            }
+            else if (a.StartsWith("--vsver=", StringComparison.Ordinal))
+            {
+                vsver = a["--vsver=".Length..];
+                if (vsver.Length == 0) return null;
+            }
+            else if (a.StartsWith('-') || shell is not null) return null;
+            else shell = a;
+        }
+        return (shell, vsver);
+    }
+
+    // exec arguments: [--vsver <year>] [--] <command...>. Options are
+    // recognized only before the command, so the user command is never
+    // reinterpreted; `--` ends option parsing for commands that start
+    // with a dash. Returns null when the arguments do not parse or no
+    // command remains (caller prints usage).
+    internal static (string[] Command, string? VsVer)? ExecArgs(string[] args)
+    {
+        string? vsver = null;
+        int i = 0;
+        while (i < args.Length)
+        {
+            string a = args[i];
+            if (a == "--") { i++; break; }
+            if (a == "--vsver")
+            {
+                if (i + 1 >= args.Length) return null;
+                vsver = args[i + 1];
+                i += 2;
+            }
+            else if (a.StartsWith("--vsver=", StringComparison.Ordinal))
+            {
+                vsver = a["--vsver=".Length..];
+                if (vsver.Length == 0) return null;
+                i++;
+            }
+            else if (a.StartsWith("--", StringComparison.Ordinal)) return null;
+            else break;
+        }
+        return i < args.Length ? (args[i..], vsver) : null;
+    }
+
+    public static int Enable(string? shell, string? vsver = null)
     {
         Shell target = ParseShell(shell);
-        string? vsdevcmd = ResolveVsDevCmd();
-        if (vsdevcmd is null) return WarnMissingToolchain();
+        string? year = EffectiveVsVer(vsver);
+        string? vsdevcmd = ResolveVsDevCmd(year);
+        if (vsdevcmd is null) return WarnMissingToolchain(year);
         var env = ActivatedDelta(vsdevcmd);
         foreach ((string key, string value) in env)
             Console.WriteLine(Assignment(target, key, value));
@@ -55,10 +149,11 @@ internal static class Msvc
         return 0;
     }
 
-    public static int Exec(string[] command)
+    public static int Exec(string[] command, string? vsver = null)
     {
-        string? vsdevcmd = ResolveVsDevCmd();
-        if (vsdevcmd is null) return WarnMissingToolchain();
+        string? year = EffectiveVsVer(vsver);
+        string? vsdevcmd = ResolveVsDevCmd(year);
+        if (vsdevcmd is null) return WarnMissingToolchain(year);
         var delta = ActivatedDelta(vsdevcmd);
         // cmd.exe /c so that .cmd shims (gem, bundle) and PATHEXT resolve
         // the way they would if the user had typed the command directly.
@@ -122,10 +217,11 @@ internal static class Msvc
         }
     }
 
-    // Resolves the newest VS install that carries the MSVC toolset and
-    // returns its VsDevCmd.bat, or null when no usable toolchain exists
-    // (vswhere absent, no matching install, or VsDevCmd.bat missing).
-    internal static string? LocateVsDevCmd()
+    // Resolves the newest VS install that carries the MSVC toolset (within
+    // the given product year when one is requested) and returns its
+    // VsDevCmd.bat, or null when no usable toolchain exists (vswhere
+    // absent, no matching install, or VsDevCmd.bat missing).
+    internal static string? LocateVsDevCmd(string? year = null)
     {
         if (!File.Exists(VsWhere)) return null;
         var psi = new ProcessStartInfo
@@ -137,13 +233,19 @@ internal static class Msvc
         // -products * finds Build-Tools-only installs; -requires narrows to
         // installs that carry the MSVC x64/x86 toolset (this component id is
         // stable across VS versions, unlike the legacy Microsoft.VisualCpp.*
-        // ids); -latest picks the newest when several qualify.
+        // ids); -version narrows to the requested product year; -latest
+        // picks the newest when several qualify.
         foreach (string a in new[]
         {
             "-latest", "-products", "*",
             "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
             "-property", "installationPath",
         }) psi.ArgumentList.Add(a);
+        if (year is not null)
+        {
+            psi.ArgumentList.Add("-version");
+            psi.ArgumentList.Add(VsVerRanges[year]);
+        }
 
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("failed to launch vswhere");
@@ -154,19 +256,95 @@ internal static class Msvc
         return File.Exists(vsdevcmd) ? vsdevcmd : null;
     }
 
+    internal sealed record VsInstall(string Year, string Version, string Path);
+
+    // All installs carrying the MSVC toolset, newest first (the first entry
+    // is what -latest resolves to). Empty when vswhere is absent or finds
+    // nothing. The year comes from the installationVersion major (see
+    // VsProducts), falling back to catalog.productLineVersion for majors
+    // this build does not know yet.
+    internal static List<VsInstall> Installs()
+    {
+        if (!File.Exists(VsWhere)) return [];
+        var psi = new ProcessStartInfo
+        {
+            FileName = VsWhere,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+        };
+        foreach (string a in new[]
+        {
+            "-products", "*",
+            "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-format", "json", "-utf8",
+        }) psi.ArgumentList.Add(a);
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("failed to launch vswhere");
+        string json = proc.StandardOutput.ReadToEnd();
+        proc.WaitForExit();
+        if (proc.ExitCode != 0) return [];
+
+        var installs = new List<VsInstall>();
+        using var doc = JsonDocument.Parse(json);
+        foreach (JsonElement e in doc.RootElement.EnumerateArray())
+        {
+            if (e.GetProperty("installationPath").GetString() is not { } path ||
+                e.GetProperty("installationVersion").GetString() is not { } version)
+                continue;
+            string year = YearOfVersion(version)
+                ?? (e.TryGetProperty("catalog", out JsonElement catalog) &&
+                    catalog.TryGetProperty("productLineVersion", out JsonElement line) &&
+                    line.GetString() is { Length: > 0 } y
+                        ? y : "?");
+            installs.Add(new VsInstall(year, version, path));
+        }
+        return installs
+            .OrderByDescending(i => System.Version.TryParse(i.Version, out var v)
+                ? v : new Version(0, 0))
+            .ToList();
+    }
+
+    // `rb msvc list`: one line per install, `*` marking what the current
+    // default resolution (--vsver unset, so RBMANAGER_VSVER or newest)
+    // would pick, in the same style as `rb list`.
+    public static int List()
+    {
+        var installs = Installs();
+        if (installs.Count == 0) return WarnMissingToolchain(null);
+        string? year = EffectiveVsVer(null);
+        VsInstall? picked = year is null
+            ? installs[0]
+            : installs.FirstOrDefault(i => i.Year == year);
+        int width = installs.Max(i => i.Version.Length);
+        foreach (VsInstall i in installs)
+            Console.WriteLine(
+                $"{(ReferenceEquals(i, picked) ? "*" : " ")} {i.Year}  " +
+                $"{i.Version.PadRight(width)}  {i.Path}");
+        return 0;
+    }
+
     // Fails fast with the setup steps instead of letting mkmf die later
     // with its cryptic "install development tools first". stderr only, so
-    // an eval'd `rb msvc enable` pipeline never swallows it.
-    private static int WarnMissingToolchain()
+    // an eval'd `rb msvc enable` pipeline never swallows it. When a
+    // specific year was requested, names it, lists the years that are
+    // installed, and suggests the matching Build Tools package.
+    private static int WarnMissingToolchain(string? year)
     {
-        Console.Error.WriteLine("""
-            rb: warning: no Visual Studio C++ toolchain found; native extensions cannot be built.
+        string product = year is null ? "" : $" {year}";
+        string installed = "";
+        if (year is not null &&
+            Installs().Select(i => i.Year).Distinct().Order().ToArray() is { Length: > 0 } years)
+            installed = $" (installed: {string.Join(", ", years)})";
+        Console.Error.WriteLine($"""
+            rb: warning: no Visual Studio{product} C++ toolchain found{installed}; native extensions cannot be built.
 
             To set one up:
 
               1. Install the "Desktop development with C++" workload, e.g.
 
-                   winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools"
+                   winget install Microsoft.VisualStudio.{year ?? "2022"}.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools"
 
                  (any Visual Studio edition with that workload also works)
 

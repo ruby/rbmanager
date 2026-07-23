@@ -96,6 +96,46 @@ wrong prints syntax the shell cannot eval. Explicit selection with a
 sensible default is the safer contract; auto-detection can be layered on
 later as a convenience without changing the interface.
 
+## Visual Studio version selection
+
+Both surfaces take `--vsver <year>` (`2017|2019|2022|2026|latest`,
+also `--vsver=<year>`), with the `RBMANAGER_VSVER` environment
+variable as a session-wide default; precedence is flag, then env var,
+then newest installed. The value is the product year because that is
+the user's mental model ("I installed Build Tools 2019"); internally
+each year maps to a fixed `vswhere -version` range
+(`2019 = [16.0,17.0)`), so selection is one extra argument on the
+existing query and `-latest` still picks the newest within the range.
+The explicit `latest` value exists to override the env var per
+invocation. `rb msvc list` shows the installed toolchains, newest
+first, with a `*` on the one default resolution would pick (same
+notation as `rb list`).
+
+For `exec`, options are recognized only before the command and `--`
+ends option parsing, so the user command is never reinterpreted. When
+the requested year is not installed, the warning names it, lists the
+years that are, and suggests the matching
+`Microsoft.VisualStudio.<year>.BuildTools` winget package.
+
+The default stays "newest installed" because the mswin ABI
+(`x64-mswin64_140`, the vcruntime140 family) is compatible across all
+VS 2015+ toolsets; there is no need to match the VS that built Ruby
+itself. Pinning is the escape hatch for toolset-specific bugs or an
+organization standard, not the normal path.
+
+One trap for future readers: the year cannot be taken from vswhere's
+`catalog.productLineVersion`. The Dev18 series reports `18` there even
+though its displayName says "Visual Studio Build Tools 2026", so the
+year shown by `rb msvc list` (and matched by `--vsver`) is derived
+from the `installationVersion` major instead.
+
+`--vsver` deliberately does not cover VsDevCmd's `-vcvars_ver` (the
+toolset-within-an-install axis); a future `--toolset` can add that
+without touching this interface. A persistent `rb msvc use <year>` is
+also deliberately absent: rbmanager has no config file, and a
+persistent pin would go silently stale when VS installs change, the
+same staleness argument that rejected caching below.
+
 ## VS discovery
 
 Discovery uses `vswhere.exe`, which ships with the VS Installer at the
