@@ -29,9 +29,11 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                ["msvc", "enable"] => Msvc.Enable(null),
-                ["msvc", "enable", var shell] => Msvc.Enable(shell),
-                ["msvc", "exec", .. var command] when command.Length > 0 => Msvc.Exec(command),
+                ["msvc", "enable", .. var rest] =>
+                    Msvc.EnableArgs(rest) is { } en ? Msvc.Enable(en.Shell, en.VsVer) : Usage(),
+                ["msvc", "exec", .. var rest] =>
+                    Msvc.ExecArgs(rest) is { } ex ? Msvc.Exec(ex.Command, ex.VsVer) : Usage(),
+                ["msvc", "list"] => Msvc.List(),
                 _ => Usage(),
             };
         }
@@ -54,6 +56,8 @@ internal static class Program
               uninstall <version>    remove an installed ruby
               msvc enable [shell]    print the MSVC build env to eval (cmd|powershell)
               msvc exec <command...> run a command with the MSVC build env applied
+                                     (both accept --vsver <year> to pick a VS version)
+              msvc list              list installed Visual Studio C++ toolchains
             """);
         return 2;
     }
