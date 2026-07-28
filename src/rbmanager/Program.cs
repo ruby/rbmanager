@@ -29,11 +29,11 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                ["msvc", "enable", .. var rest] =>
-                    Msvc.EnableArgs(rest) is { } en ? Msvc.Enable(en.Shell, en.VsVer) : Usage(),
-                ["msvc", "exec", .. var rest] =>
-                    Msvc.ExecArgs(rest) is { } ex ? Msvc.Exec(ex.Command, ex.VsVer) : Usage(),
-                ["msvc", "list"] => Msvc.List(),
+                // Everything after `msvc` belongs to Msvc's own parser: it
+                // owns one reserved word (`enable`) and passes the rest
+                // through as the user's command line.
+                ["msvc", .. var rest] =>
+                    Msvc.Parse(rest) is { } msvc ? Msvc.Dispatch(msvc) : Usage(),
                 _ => Usage(),
             };
         }
@@ -54,10 +54,10 @@ internal static class Program
               list                   list installed rubies
               use <version>          switch the active ruby
               uninstall <version>    remove an installed ruby
+              msvc <command...>      run a command with the MSVC build env applied
               msvc enable [shell]    print the MSVC build env to eval (cmd|powershell)
-              msvc exec <command...> run a command with the MSVC build env applied
-                                     (both accept --vsver <year> to pick a VS version)
-              msvc list              list installed Visual Studio C++ toolchains
+              msvc --list            list installed Visual Studio C++ toolchains
+                                     (msvc and msvc enable accept --vsver <year>)
             """);
         return 2;
     }

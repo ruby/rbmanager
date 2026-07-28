@@ -134,6 +134,81 @@ public class MsvcHelperTests
         Assert.Null(Msvc.ExecArgs(["--"]));                // separator alone
     }
 
+    private static void AssertParsedRun(string[] command, string? vsver, params string[] args)
+    {
+        var parsed = Msvc.Parse(args);
+        Assert.NotNull(parsed);
+        Assert.Equal(Msvc.Op.Run, parsed.Value.Op);
+        Assert.Equal(command, parsed.Value.Command);
+        Assert.Equal(vsver, parsed.Value.VsVer);
+    }
+
+    private static void AssertParsedEnable(string? shell, string? vsver, params string[] args)
+    {
+        var parsed = Msvc.Parse(args);
+        Assert.NotNull(parsed);
+        Assert.Equal(Msvc.Op.Enable, parsed.Value.Op);
+        Assert.Equal(shell, parsed.Value.Shell);
+        Assert.Equal(vsver, parsed.Value.VsVer);
+    }
+
+    [Fact] // case 86: a bare command is the user's, passed through verbatim
+    public void Parse_Command_PassesThrough()
+    {
+        AssertParsedRun(["gem", "install", "nokogiri"], null, "gem", "install", "nokogiri");
+        AssertParsedRun(["gem", "install", "nokogiri"], "2022",
+            "--vsver", "2022", "gem", "install", "nokogiri");
+        AssertParsedRun(["cl"], "2022", "--vsver=2022", "cl");
+    }
+
+    [Fact] // case 86: `enable` is the one reserved word, --vsver on either side
+    public void Parse_Enable_ReachesEnable()
+    {
+        AssertParsedEnable(null, null, "enable");
+        AssertParsedEnable("cmd", null, "enable", "cmd");
+        AssertParsedEnable("powershell", "2022", "enable", "--vsver", "2022", "powershell");
+        AssertParsedEnable("powershell", "2022", "--vsver", "2022", "enable", "powershell");
+    }
+
+    [Fact] // case 86: `--` makes even the reserved word a command
+    public void Parse_DoubleDash_EnableIsCommand()
+    {
+        AssertParsedRun(["enable"], null, "--", "enable");
+        AssertParsedRun(["enable", "cmd"], "2022", "--vsver", "2022", "--", "enable", "cmd");
+    }
+
+    [Fact] // case 86: --list is terminal
+    public void Parse_List()
+    {
+        var parsed = Msvc.Parse(["--list"]);
+        Assert.NotNull(parsed);
+        Assert.Equal(Msvc.Op.List, parsed.Value.Op);
+        // a year does not apply to a query, so it is read but unused
+        Assert.Equal(Msvc.Op.List, Msvc.Parse(["--vsver", "2022", "--list"])!.Value.Op);
+
+        Assert.Null(Msvc.Parse(["--list", "cl"]));       // command after the query
+        Assert.Null(Msvc.Parse(["--list", "enable"]));   // reserved word too
+    }
+
+    [Fact] // case 86: option recognition stops at the first command token
+    public void Parse_OptionsAreLeadingOnly()
+    {
+        AssertParsedRun(["ruby", "--list"], null, "ruby", "--list");
+        AssertParsedRun(["ruby", "--vsver", "2022"], null, "ruby", "--vsver", "2022");
+    }
+
+    [Fact] // case 86
+    public void Parse_Malformed_Null()
+    {
+        Assert.Null(Msvc.Parse([]));                     // bare `rb msvc`
+        Assert.Null(Msvc.Parse(["--vsver"]));            // missing value
+        Assert.Null(Msvc.Parse(["--vsver", "2022"]));    // option but no command
+        Assert.Null(Msvc.Parse(["--vsver=", "cl"]));     // empty value
+        Assert.Null(Msvc.Parse(["--bogus", "cl"]));      // unknown leading option
+        Assert.Null(Msvc.Parse(["--"]));                 // separator alone
+        Assert.Null(Msvc.Parse(["enable", "cmd", "pwsh"]));  // two shells
+    }
+
     [Fact] // case 78: the year map covers exactly the VsDevCmd-era products
     public void VsVerRanges_YearToInstallationVersionRange()
     {

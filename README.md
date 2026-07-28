@@ -27,9 +27,9 @@ rb install <zip|url>       install a ruby binary package
 rb list                    list installed rubies
 rb use <version>           switch the active ruby
 rb uninstall <version>     remove an installed ruby
+rb msvc <command...>       run a command with the MSVC build env applied
 rb msvc enable [shell]     print the MSVC build env to eval (cmd|powershell)
-rb msvc exec <command...>  run a command with the MSVC build env applied
-rb msvc list               list installed Visual Studio C++ toolchains
+rb msvc --list             list installed Visual Studio C++ toolchains
 ```
 
 rb is a bare exe; `setup` copies it to
@@ -39,12 +39,16 @@ ship. It also checks for the VC++ 2015-2022 redistributable the
 official mswin packages depend on, and offers to download and install
 it (signature-verified, elevated); `--yes` skips the consent prompt.
 
-`msvc enable` and `msvc exec` activate an installed Visual Studio (or
-Build Tools) MSVC toolchain for building C extension gems; see
-[docs/msvc-enable.md](docs/msvc-enable.md). By default the newest
+`msvc` activates an installed Visual Studio (or Build Tools) MSVC
+toolchain for building C extension gems and runs the rest of the
+command line under it, as in `rb msvc gem install nokogiri`;
+`msvc enable` prints the same environment for a shell to eval instead.
+See [docs/msvc-enable.md](docs/msvc-enable.md). By default the newest
 install wins; `--vsver <2017|2019|2022|2026|latest>` (or the
 `RBMANAGER_VSVER` environment variable) pins a specific Visual Studio
-version, and `msvc list` shows what is installed.
+version, and `msvc --list` shows what is installed. Apart from
+`enable`, every word after `msvc` is the command to run, so future
+`msvc` operations are spelled as flags.
 
 The official mswin packages deliberately do not bundle
 vcruntime140.dll (https://bugs.ruby-lang.org/issues/22180) and expect

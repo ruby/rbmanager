@@ -34,9 +34,9 @@ Command surface and contracts:
 | `rb list` | Installed names sorted, active one starred | 0 |
 | `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
-| `rb msvc enable [--vsver <year>] [shell]` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation, print per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. No toolchain: actionable warning on stderr | 0 / 1 |
-| `rb msvc exec [--vsver <year>] [--] <cmd...>` | Same delta applied to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing | child / 1 |
-| `rb msvc list` | All installs carrying the MSVC toolset, newest first, `*` on the one default resolution would pick. No toolchain: same warning as enable/exec | 0 / 1 |
+| `rb msvc [--vsver <year>] [--] <cmd...>` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation and apply it to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing. `enable` is the only reserved word after `msvc` | child / 1 |
+| `rb msvc enable [--vsver <year>] [shell]` | Same delta printed as per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. `--vsver` parses on either side of `enable`. No toolchain: actionable warning on stderr | 0 / 1 |
+| `rb msvc --list` | All installs carrying the MSVC toolset, newest first, `*` on the one default resolution would pick. Terminal: nothing may follow it. No toolchain: same warning as the other two | 0 / 1 / 2 |
 | anything else | Usage text | 2 |
 
 Any thrown exception is caught in `Main`, printed as `rb: <message>` to
@@ -210,10 +210,10 @@ Drive the exe built by `dotnet build` (see section 5 for AOT).
 34. No args → usage on stdout, exit 2.
 35. Unknown command → usage, exit 2.
 36. `install` with no argument, `use` with no argument, `msvc` with no
-    subcommand, `msvc exec` with no command → usage, exit 2 (the
-    `msvc exec` pattern requires a non-empty command). Malformed msvc
-    options too: `msvc exec --vsver` (no value), `msvc exec --vsver
-    2022` (no command), `msvc enable --vsver` (no value), `msvc enable`
+    command → usage, exit 2 (the `msvc` parser requires a non-empty
+    command). Malformed msvc options too: `msvc --vsver` (no value),
+    `msvc --vsver 2022` (no command), `msvc --list cl` (a command after
+    the terminal query), `msvc enable --vsver` (no value), `msvc enable`
     with two shells.
 37. Failing command (e.g. `use nosuch`) → stderr starts with `rb: `,
     exit 1, stdout empty.
@@ -298,6 +298,19 @@ already taken by the AOT publish smoke):
 78. `VsVerRanges` maps exactly 2017/2019/2022/2026 to the
     `[15.0,16.0)`-style installationVersion ranges.
 
+Added when `msvc exec <cmd...>` became `msvc <cmd...>` and `msvc list`
+became `msvc --list`:
+
+86. `Parse` (everything after the `msvc` token): a bare command passes
+    through verbatim, with or without a leading `--vsver`; `enable`
+    reaches the enable path and takes `--vsver` on either side of it;
+    `--` makes even `enable` a command; `--list` is terminal, so a
+    command (or the word `enable`) after it → null, while a year before
+    it is read and unused; option recognition stops at the first command
+    token, so `ruby --list` is a two-token command; bare `msvc`, a
+    missing or empty `--vsver` value, an unknown leading option, `--`
+    alone, and two shells after `enable` → null.
+
 ### 4.9 Msvc: activation with a stub VsDevCmd — Integration
 
 Stub `.bat` fixture written per test, e.g. sets `RB_TEST_NEW=hello`,
@@ -325,9 +338,9 @@ contains `=` and one containing non-ASCII, and `exit /b 0`.
     child sees the stub's variables and does not see
     `NoDefaultCurrentDirectoryInExePath` (set it in the test process
     first).
-69. `Exec` exit-code propagation: `rb msvc exec cmd /c exit 7` → 7.
+69. `Exec` exit-code propagation: `rb msvc cmd /c exit 7` → 7.
 70. `Exec` resolves `.cmd` shims: put a `hello.cmd` on the stub-added
-    PATH dir, `msvc exec hello` → runs it (proves the `cmd /s /c` routing
+    PATH dir, `msvc hello` → runs it (proves the `cmd /s /c` routing
     and PATHEXT behavior).
 71. `Exec` argument quoting: an argument with spaces survives to the
     child (child echoes `%1`-style or a tiny script writes its argv to
@@ -343,8 +356,14 @@ Added with `--vsver`:
 81. `Enable`/`Exec` with a requested year and `VsWhere` nonexistent →
     stderr names the year and suggests the matching
     `Microsoft.VisualStudio.<year>.BuildTools` winget id, exit 1.
-82. `List` with `VsWhere` nonexistent → same warning as enable/exec,
+82. `List` with `VsWhere` nonexistent → same warning as the other two,
     exit 1, stdout empty.
+
+Added with the command-surface change:
+
+87. `Dispatch` routes a parsed request to the operation it names:
+    `enable cmd` prints the stub's assignments, and `cmd /c exit 7`
+    runs as a command and propagates 7.
 
 ### 4.10 Msvc against real Visual Studio — RequiresVS (opt-in)
 
@@ -353,15 +372,15 @@ Skipped unless vswhere resolves an install (use a runtime skip, e.g.
 
 72. `LocateVsDevCmd` returns an existing `VsDevCmd.bat`.
 73. `ActivatedDelta` includes `INCLUDE`, `LIB`, and a `PATH` change.
-74. `rb msvc exec cl` (E2E) exits 0 with cl's banner on stderr.
+74. `rb msvc cl` (E2E) exits 0 with cl's banner on stderr.
 
 Added with `--vsver`:
 
 83. `LocateVsDevCmd(<year>)` for every installed year resolves a
     `VsDevCmd.bat` under that year's install path.
-84. `rb msvc list` (E2E) prints one line per install, newest first,
+84. `rb msvc --list` (E2E) prints one line per install, newest first,
     `*` on the first, install path on each line.
-85. `rb msvc exec --vsver <newest installed year> cl` (E2E) runs cl.
+85. `rb msvc --vsver <newest installed year> cl` (E2E) runs cl.
 
 ### 4.11 AOT publish smoke — E2E (opt-in, slow)
 
@@ -429,6 +448,6 @@ a comment. Each is a product decision to make separately.
 5. Dangling `current` (target deleted out of band) has unpinned
    semantics in `CurrentTarget`/`Uninstall` (case 30 pins it).
 6. `ParseShell` is case-sensitive (`PowerShell` is rejected).
-7. `QuoteArg` does not escape embedded quotes; `rb msvc exec` with an
-   argument containing `"` produces a broken cmd line (case 60 pins
-   the helper's output only).
+7. `QuoteArg` does not escape embedded quotes; `rb msvc <command...>`
+   with an argument containing `"` produces a broken cmd line (case 60
+   pins the helper's output only).

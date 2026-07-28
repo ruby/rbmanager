@@ -267,6 +267,22 @@ public class MsvcActivationTests
         Assert.Contains("no Visual Studio C++ toolchain found", cap.Err);
     }
 
+    [Fact] // case 87: Dispatch routes a parsed request to the right operation
+    public void Dispatch_RoutesEnableAndCommand()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_VSDEVCMD", Bat(tmp, "set RB_TEST_NEW=hello"));
+
+        using (var cap = new ConsoleCapture())
+        {
+            Assert.Equal(0, Msvc.Dispatch(Msvc.Parse(["enable", "cmd"])!.Value));
+            Assert.Contains("set \"RB_TEST_NEW=hello\"", cap.OutLines);
+        }
+
+        Assert.Equal(7, Msvc.Dispatch(Msvc.Parse(["cmd", "/c", "exit", "7"])!.Value));
+    }
+
     [Fact] // case 71: an argument with spaces survives as one argument
     public void Exec_QuotesArgumentWithSpaces()
     {

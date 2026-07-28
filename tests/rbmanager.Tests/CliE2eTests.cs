@@ -35,9 +35,9 @@ public class CliE2eTests
     [InlineData("install")]
     [InlineData("use")]
     [InlineData("msvc")]
-    [InlineData("msvc", "exec")]
-    [InlineData("msvc", "exec", "--vsver")]
-    [InlineData("msvc", "exec", "--vsver", "2022")]
+    [InlineData("msvc", "--vsver")]
+    [InlineData("msvc", "--vsver", "2022")]
+    [InlineData("msvc", "--list", "cl")]
     [InlineData("msvc", "enable", "--vsver")]
     [InlineData("msvc", "enable", "cmd", "pwsh")]
     public void MissingRequiredArgument_Usage_Exit2(params string[] command)
