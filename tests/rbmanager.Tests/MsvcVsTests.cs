@@ -38,7 +38,7 @@ public class MsvcVsTests
         Skip.If(RealVsDevCmd() is null, "no Visual Studio C++ toolchain installed");
         using var sb = new E2eSandbox();
 
-        RbResult r = sb.Run("msvc", "exec", "cl");
+        RbResult r = sb.Run("msvc", "cl");
 
         // cl with no input files prints its version banner to stderr.
         Assert.Contains("Microsoft", r.Err);
@@ -67,7 +67,7 @@ public class MsvcVsTests
         Skip.If(installs.Count == 0, "no Visual Studio C++ toolchain installed");
         using var sb = new E2eSandbox();
 
-        RbResult r = sb.Run("msvc", "list");
+        RbResult r = sb.Run("msvc", "--list");
 
         Assert.Equal(0, r.ExitCode);
         string[] lines = r.Out.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
@@ -78,7 +78,7 @@ public class MsvcVsTests
             Assert.Contains(install.Path, line);
     }
 
-    [SkippableFact] // case 85: exec with an installed year still finds cl
+    [SkippableFact] // case 85: the passthrough with an installed year still finds cl
     public void Exec_WithVsVer_RunsCompiler()
     {
         var installs = Msvc.Installs();
@@ -87,7 +87,7 @@ public class MsvcVsTests
         Skip.If(!Msvc.VsVerRanges.ContainsKey(year), $"unmapped product year {year}");
         using var sb = new E2eSandbox();
 
-        RbResult r = sb.Run("msvc", "exec", "--vsver", year, "cl");
+        RbResult r = sb.Run("msvc", "--vsver", year, "cl");
 
         Assert.Contains("Microsoft", r.Err);
     }
