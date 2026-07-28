@@ -13,14 +13,14 @@ namespace RbManager;
 // Studio's Developer Command Prompt), and exposes that environment two
 // ways:
 //
-//   rb msvc enable [--vsver <year>] [cmd|powershell|pwsh]
-//                                         print env assignments to eval
-//                                         in the current shell
-//   rb msvc exec [--vsver <year>] [--] <command...>
+//   rb msvc [--vsver <year>] [--] <command...>
 //                                         run one command with the
 //                                         toolchain already applied
 //                                         (no shell mutation)
-//   rb msvc list                          list installed VS C++ toolchains
+//   rb msvc enable [--vsver <year>] [cmd|powershell|pwsh]
+//                                         print env assignments to eval
+//                                         in the current shell
+//   rb msvc --list                        list installed VS C++ toolchains
 //
 // The VS version is picked as --vsver flag > RBMANAGER_VSVER > newest
 // installed. See docs/msvc-enable.md for the design rationale.
@@ -78,6 +78,61 @@ internal static class Msvc
         return v;
     }
 
+    // What `rb msvc <args>` resolves to. `enable` is the only word
+    // reserved after `msvc`; every other bare word is the user's command,
+    // so a future operation has to be spelled as a flag (like --list)
+    // rather than as a word that would shadow a real executable.
+    internal enum Op { Run, Enable, List }
+
+    private const string EnableWord = "enable";
+
+    // Arguments after the `msvc` token: the leading options (--list,
+    // --vsver <year>, --vsver=<year>) followed by either the `enable`
+    // subcommand or the command to run. Options are recognized only
+    // before the first non-option token, and `--` ends option reading,
+    // so the user command is never reinterpreted. Returns null when the
+    // arguments do not parse (caller prints usage).
+    internal static (Op Op, string? Shell, string[] Command, string? VsVer)? Parse(string[] args)
+    {
+        bool list = false;
+        int i = 0;
+        while (i < args.Length)
+        {
+            string a = args[i];
+            if (a == "--list") { list = true; i++; }
+            else if (a == "--vsver")
+            {
+                if (i + 1 >= args.Length) return null;
+                i += 2;
+            }
+            else if (a.StartsWith("--vsver=", StringComparison.Ordinal)) i++;
+            else break;
+        }
+        string[] rest = args[i..];
+
+        // --list reports instead of acting, so it is terminal: nothing
+        // may follow it, and a year (which only narrows what enable and
+        // the passthrough activate) does not apply to it.
+        if (list) return rest.Length == 0 ? (Op.List, null, [], null) : null;
+
+        // The `enable` token is dropped and everything else handed to
+        // EnableArgs, so --vsver parses on either side of it.
+        if (rest is [EnableWord, ..])
+            return EnableArgs([.. args[..i], .. rest[1..]]) is { } en
+                ? (Op.Enable, en.Shell, [], en.VsVer)
+                : null;
+
+        return ExecArgs(args) is { } ex ? (Op.Run, null, ex.Command, ex.VsVer) : null;
+    }
+
+    public static int Dispatch((Op Op, string? Shell, string[] Command, string? VsVer) request) =>
+        request.Op switch
+        {
+            Op.List => List(),
+            Op.Enable => Enable(request.Shell, request.VsVer),
+            _ => Exec(request.Command, request.VsVer),
+        };
+
     // enable arguments: [--vsver <year>] [shell], in either order.
     // Returns null when the arguments do not parse (caller prints usage).
     internal static (string? Shell, string? VsVer)? EnableArgs(string[] args)
@@ -102,8 +157,8 @@ internal static class Msvc
         return (shell, vsver);
     }
 
-    // exec arguments: [--vsver <year>] [--] <command...>. Options are
-    // recognized only before the command, so the user command is never
+    // passthrough arguments: [--vsver <year>] [--] <command...>. Options
+    // are recognized only before the command, so the user command is never
     // reinterpreted; `--` ends option parsing for commands that start
     // with a dash. Returns null when the arguments do not parse or no
     // command remains (caller prints usage).
@@ -306,7 +361,7 @@ internal static class Msvc
             .ToList();
     }
 
-    // `rb msvc list`: one line per install, `*` marking what the current
+    // `rb msvc --list`: one line per install, `*` marking what the current
     // default resolution (--vsver unset, so RBMANAGER_VSVER or newest)
     // would pick, in the same style as `rb list`.
     public static int List()
