@@ -37,6 +37,7 @@ Command surface and contracts:
 | `rb msvc [--vsver <year>] [--] <cmd...>` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation and apply it to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing. `enable` is the only reserved word after `msvc` | child / 1 |
 | `rb msvc enable [--vsver <year>] [shell]` | Same delta printed as per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. `--vsver` parses on either side of `enable`. No toolchain: actionable warning on stderr | 0 / 1 |
 | `rb msvc --list` | All installs carrying the MSVC toolset, newest first, `*` on the one default resolution would pick. Terminal: nothing may follow it. No toolchain: same warning as the other two | 0 / 1 / 2 |
+| `rb version` | Print `rbmanager <version> (<commit> <date>)` in cargo's shape, from the assembly's informational version (whose `+<commit>` suffix carries the commit) and the `CommitDate` assembly metadata. The parenthetical is dropped when the build had no git checkout, and the assembly version stands in for a missing informational version | 0 |
 | anything else | Usage text | 2 |
 
 Any thrown exception is caught in `Main`, printed as `rb: <message>` to
@@ -389,6 +390,28 @@ Added with `--vsver`:
     the trust hook file is written (verifies the embedded resource and
     the `LibraryImport` P/Invokes survive AOT; this is the one place
     the AOT binary differs meaningfully from the CoreCLR build).
+
+### 4.12 Program: `rb version` — Unit + E2E + Publish
+
+Everything is read back from the assembly instead of a literal, so the
+values are whatever the build stamped in and the tests pin the shape.
+
+88. (E2E) `rb version` → exit 0 and one line matching
+    `rbmanager <version> (<commit> <date>)`, the parenthetical optional.
+89. (Unit) `FormatVersion` with all three present → the full
+    cargo-shaped line.
+90. (Unit) `FormatVersion` with the commit, the date, or both missing →
+    the parenthetical carries only what is there, or is dropped
+    entirely. A prerelease tag keeps its own `-rc1` suffix.
+91. (Unit) `FormatVersion` falls back to the assembly version when there
+    is no informational version, and to `unknown` when there is neither.
+92. (Unit) `SelfVersion` for the current build starts with `rbmanager `
+    and a parseable version.
+93. (Publish) The same command against the AOT exe prints exactly what
+    the in-process resolution returns. NativeAOT is the one place the
+    assembly-attribute lookup could come back empty, and both builds
+    come from the same source tree at the same commit, so any
+    divergence is AOT.
 
 ## 5. Execution plan
 

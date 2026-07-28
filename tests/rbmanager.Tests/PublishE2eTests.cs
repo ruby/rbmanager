@@ -31,6 +31,21 @@ public class PublishE2eTests : IClassFixture<PublishFixture>
         Assert.True(File.Exists(hook));
     }
 
+    // Compared against the in-process resolution rather than a literal.
+    // Both come from the same source tree at the same commit, so any
+    // divergence is AOT dropping the assembly metadata `rb version` reads.
+    [SkippableFact] // case 93
+    public void Version_UnderAot_MatchesTheInProcessResolution()
+    {
+        Skip.If(_fx.ExePath is null, _fx.SkipReason);
+        using var sb = new E2eSandbox();
+
+        RbResult r = sb.RunExe(_fx.ExePath!, "version");
+
+        Assert.Equal(0, r.ExitCode);
+        Assert.Equal(Program.SelfVersion(), r.Out.Trim());
+    }
+
     [SkippableFact] // case 32: self-copy skip works on the self-contained exe
     public void Setup_FromCopiedExe_NoSelfCopyError()
     {

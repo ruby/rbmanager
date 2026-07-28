@@ -58,6 +58,18 @@ public class CliE2eTests
         Assert.StartsWith("rb: ", r.Err);
     }
 
+    [Fact] // case 88
+    public void Version_OneLine_Exit0()
+    {
+        using var sb = new E2eSandbox();
+        RbResult r = sb.Run("version");
+
+        Assert.Equal(0, r.ExitCode);
+        string line = Assert.Single(Lines(r.Out));
+        // cargo's shape, e.g. `rbmanager 0.1.0 (9a1b2c3 2026-07-28)`.
+        Assert.Matches(@"^rbmanager \d+(\.\d+)+( \([0-9a-f]+ \d{4}-\d{2}-\d{2}\))?$", line);
+    }
+
     [Fact] // case 38
     public void FullLifecycle_ThroughProcessBoundary()
     {
