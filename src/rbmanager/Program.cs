@@ -29,6 +29,7 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
+                ["version"] => Version(),
                 // Everything after `msvc` belongs to Msvc's own parser: it
                 // owns one reserved word (`enable`) and passes the rest
                 // through as the user's command line.
@@ -58,6 +59,7 @@ internal static class Program
               msvc enable [shell]    print the MSVC build env to eval (cmd|powershell)
               msvc --list            list installed Visual Studio C++ toolchains
                                      (msvc and msvc enable accept --vsver <year>)
+              version                print the rbmanager version
             """);
         return 2;
     }
@@ -156,6 +158,41 @@ internal static class Program
         Directory.Delete(Path.Combine(Rubies, name), recursive: true);
         Console.WriteLine($"Uninstalled {name}");
         return 0;
+    }
+
+    // Which build is this? An upgraded rb.exe is otherwise only
+    // distinguishable by its file timestamp.
+    private static int Version()
+    {
+        Console.WriteLine(SelfVersion());
+        return 0;
+    }
+
+    // Read back from the assembly rather than kept as a literal here. The
+    // release workflow stamps the version from the tag (-p:Version=<tag>)
+    // and rbmanager.csproj stamps the commit, so constants in this file
+    // would drift from the shipped exe.
+    internal static string SelfVersion()
+    {
+        Assembly self = Assembly.GetExecutingAssembly();
+        return FormatVersion(
+            self.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
+            self.GetName().Version?.ToString(),
+            self.GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "CommitDate")?.Value);
+    }
+
+    // cargo's shape, `cargo 1.75.0 (1d8b05cdd 2023-11-20)`. The commit
+    // rides along as SourceRevisionId's "+<commit>" suffix on the
+    // informational version. A build with no git checkout to ask has
+    // neither commit nor date, and then only the version is printed.
+    internal static string FormatVersion(string? informational, string? assembly, string? date)
+    {
+        string[] parts = (informational is { Length: > 0 } ? informational
+            : assembly ?? "unknown").Split('+', 2);
+        string stamp = string.Join(' ', new[] { parts.Length > 1 ? parts[1] : null, date }
+            .Where(s => !string.IsNullOrEmpty(s)));
+        return stamp.Length == 0 ? $"rbmanager {parts[0]}" : $"rbmanager {parts[0]} ({stamp})";
     }
 
     private static IEnumerable<string> InstalledRubies() =>
