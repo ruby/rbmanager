@@ -27,6 +27,33 @@
     <Copyright>Copyright (c) 2026 Hiroshi SHIBATA</Copyright>
   </PropertyGroup>
 
+  <!-- Build stamp behind `rb version`, in cargo's shape
+       (`cargo 1.75.0 (1d8b05cdd 2023-11-20)`). The version alone does not
+       separate two builds of the same tag. Skipped when there is no git
+       checkout to ask, and `rb version` then prints the version alone. -->
+  <Target Name="StampCommit"
+          BeforeTargets="AddSourceRevisionToInformationalVersion"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\..\.git')">
+    <!-- %25%25 survives both MSBuild's and cmd's unescaping, leaving git
+         with a bare % in its format string. -->
+    <Exec Command="git log -1 --format=%25%25h" ContinueOnError="true"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="RbCommit" />
+    </Exec>
+    <Exec Command="git log -1 --format=%25%25cs" ContinueOnError="true"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="RbCommitDate" />
+    </Exec>
+    <PropertyGroup Condition="'$(RbCommit)' != ''">
+      <SourceRevisionId>$(RbCommit)</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(RbCommitDate)' != ''">
+      <AssemblyMetadata Include="CommitDate" Value="$(RbCommitDate)" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Same CA trust hook the MSI overlay ships; injected into every
          extracted runtime so both install channels behave identically. -->
