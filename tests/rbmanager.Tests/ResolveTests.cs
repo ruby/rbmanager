@@ -74,4 +74,54 @@ public class ResolveTests
         var ex = Assert.Throws<InvalidOperationException>(() => Program.Resolve("anything"));
         Assert.Equal("no installed ruby matches 'anything'", ex.Message);
     }
+
+    // Reissued packages (ruby/actions SIGNING.md): same version and
+    // platform differing only in the trailing numeric revision resolve
+    // to the newest reissue instead of erroring as ambiguous.
+
+    private const string R345 = "ruby-3.4.5-x64-mswin64_140";
+    private const string R345r1 = "ruby-3.4.5-1-x64-mswin64_140";
+    private const string R345r2 = "ruby-3.4.5-2-x64-mswin64_140";
+
+    [Fact]
+    public void RevisionsOfSameVersion_PickHighest()
+    {
+        using var sb = new RbSandbox();
+        sb.Seed(R345, R345r2, R345r1);
+        Assert.Equal(R345r2, Program.Resolve("3.4.5"));
+    }
+
+    [Fact] // revisions compare numerically, not lexicographically
+    public void RevisionsCompareNumerically()
+    {
+        using var sb = new RbSandbox();
+        sb.Seed(R345r2, "ruby-3.4.5-10-x64-mswin64_140");
+        Assert.Equal("ruby-3.4.5-10-x64-mswin64_140", Program.Resolve("3.4.5"));
+    }
+
+    [Fact] // the superseded original stays reachable by its full name
+    public void SupersededOriginal_FullNameStillResolves()
+    {
+        using var sb = new RbSandbox();
+        sb.Seed(R345, R345r1);
+        Assert.Equal(R345, Program.Resolve(R345));
+    }
+
+    [Fact] // revision preference never crosses version boundaries
+    public void RevisionPreference_DifferentVersionsStayAmbiguous()
+    {
+        using var sb = new RbSandbox();
+        sb.Seed(R345, R345r1, "ruby-3.4.51-x64-mswin64_140"); // also contains "3.4.5"
+        var ex = Assert.Throws<InvalidOperationException>(() => Program.Resolve("3.4.5"));
+        Assert.Contains("is ambiguous", ex.Message);
+    }
+
+    [Fact] // a prerelease is a different ruby, not a revision of the release
+    public void RevisionPreference_PrereleaseStaysAmbiguous()
+    {
+        using var sb = new RbSandbox();
+        sb.Seed("ruby-3.4.0-x64-mswin64_140", "ruby-3.4.0-rc1-x64-mswin64_140");
+        var ex = Assert.Throws<InvalidOperationException>(() => Program.Resolve("3.4.0"));
+        Assert.Contains("is ambiguous", ex.Message);
+    }
 }
