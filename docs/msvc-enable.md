@@ -248,6 +248,58 @@ shims (`gem`, `bundle`) and PATHEXT resolve the way they would if the
 user had typed the command directly; a bare `CreateProcess` would not
 find `gem` (it is `gem.cmd`).
 
+## `LIBCLANG_PATH` for Rust extension gems
+
+Rust extension gems built with rb-sys pull in bindgen, which loads
+`libclang.dll` through the clang-sys crate. clang-sys probes the Visual
+Studio install itself and does not consult PATH, and a VS install carries
+both `VC\Tools\Llvm\ARM64\bin\libclang.dll` and
+`VC\Tools\Llvm\x64\bin\libclang.dll`. Which one that probe reaches first
+is not deterministic, so on an x64 host the build fails intermittently
+with a `LoadLibraryExW failed` error. Adding the x64 Llvm `bin` to PATH
+does not fix it, which was confirmed on a real machine: three
+consecutive `rb msvc cargo build --release` runs in a fresh directory
+failed every time with `LIBCLANG_PATH` unset (the activated PATH already
+carried the x64 Llvm bin), and succeeded every time with it set.
+
+Both surfaces therefore set `LIBCLANG_PATH` to
+`<installationPath>\VC\Tools\Llvm\x64\bin` when `libclang.dll` is there.
+`VsDevCmd.bat` never sets this variable, so it is not part of the
+activation delta and is added as a separate step derived from the
+resolved `installationPath`. A `LIBCLANG_PATH` the user has already set
+is left alone.
+
+rbmanager does not install or manage rustup, cargo, or rustc, the same
+scope decision as the vcpkg dependency headers below: `rb msvc`
+activates the MSVC toolchain and clang, and does not check that a Rust
+toolchain exists. Users install rustup themselves.
+
+## Windows SDK library check
+
+`vswhere -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64`
+confirms the MSVC compiler component is installed, but says nothing
+about whether the paired Windows SDK's library files are on disk. A real
+machine was found in exactly that state, and the failure is remote from
+the cause: rustc's own MSVC detection reported ``linker `link.exe` not
+found``, and because a uutils coreutils `link.exe` happened to sit on
+PATH, the actual message was `error: 2 values required for '<FILES>
+<FILES>'`. A C extension under mkmf would fail the same way on
+`kernel32.lib`.
+
+There is no stable vswhere component id to require here, since the SDK
+ids carry their version (`Microsoft.VisualStudio.Component.Windows11SDK.*`).
+Activation instead checks the lib tree directly, using what VsDevCmd
+just reported:
+`<WindowsSdkDir>\Lib\<WindowsSDKLibVersion>\um\x64\kernel32.lib`.
+`WindowsSDKLibVersion` is the one that names the `Lib` subdirectory in
+both the 8.1 (`winv6.3`) and 10 (`10.0.x`) layouts, with
+`WindowsSDKVersion`, which only the Windows 10 SDK sets, as the
+fallback. When the file is absent, both surfaces refuse with an
+actionable message (add the Windows SDK component in the Visual Studio
+Installer) rather than handing back a half-usable environment. When
+VsDevCmd reports no SDK variables at all there is nothing to check
+against, so the check is skipped rather than failing closed.
+
 ## `NoDefaultCurrentDirectoryInExePath`
 
 On machines where `NoDefaultCurrentDirectoryInExePath` is set (it was
@@ -270,8 +322,11 @@ The prototype hard-codes `-arch=amd64 -host_arch=amd64` for the current
 arm64 mswin package exists, the arch would be derived from the active
 ruby's platform (or the host) and passed as `-arch=arm64`
 `-host_arch=amd64` (cross) or `-host_arch=arm64` (native), and the
-vswhere `-requires` would name the arm64 toolset component. That is the
-only place the change lands.
+vswhere `-requires` would name the arm64 toolset component. The two
+later additions have the same axis and are marked with the same
+`TODO(arm64)`: the `LIBCLANG_PATH` selection picks the `x64` Llvm
+directory, and the Windows SDK check looks under the `x64` lib
+subdirectories.
 
 ## Third-party dependency dev files (scope decision)
 
@@ -336,7 +391,8 @@ should not depend on it.)
 argument parser; `Program.cs`'s dispatch switch hands it everything
 after the `msvc` token. It is marked as a prototype and covers VS
 discovery, VsDevCmd activation with env-diffing, the
-`NoDefaultCurrentDirectoryInExePath` clearing, and the per-shell output.
+`NoDefaultCurrentDirectoryInExePath` clearing, the `LIBCLANG_PATH`
+forwarding, the Windows SDK library check, and the per-shell output.
 It is compiler-only (phase 1). What was exercised:
 
 - `rb msvc enable powershell|cmd` prints correct assignments; the

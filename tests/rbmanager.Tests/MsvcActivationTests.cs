@@ -26,6 +26,37 @@ public class MsvcActivationTests
         Msvc.ActivatedDelta(bat)
             .ToDictionary(t => t.Item1, t => t.Item2, StringComparer.OrdinalIgnoreCase);
 
+    // A VsDevCmd.bat at the layout position Msvc derives installationPath
+    // from (<installationPath>\Common7\Tools\VsDevCmd.bat), so the sibling
+    // VC\Tools\Llvm tree resolves the way it does in a real install.
+    private static string VsLayoutBat(TempDir tmp, string root, params string[] lines)
+    {
+        string dir = tmp.At(root, "Common7", "Tools");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "VsDevCmd.bat");
+        File.WriteAllText(path, "@echo off\r\n" + string.Join("\r\n", lines) + "\r\n");
+        return path;
+    }
+
+    private static void FakeLibclang(TempDir tmp, string root, string arch)
+    {
+        string dir = tmp.At(root, "VC", "Tools", "Llvm", arch, "bin");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "libclang.dll"), "");
+    }
+
+    // A Windows Kits lib tree as VsDevCmd reports it: both variables carry a
+    // trailing backslash.
+    private static (string Dir, string Version) FakeSdk(TempDir tmp, bool withLibs)
+    {
+        string dir = tmp.At("kits", "10");
+        const string version = "10.0.26100.0";
+        string libDir = Path.Combine(dir, "Lib", version, "um", "x64");
+        Directory.CreateDirectory(withLibs ? libDir : dir);
+        if (withLibs) File.WriteAllText(Path.Combine(libDir, "kernel32.lib"), "");
+        return (dir + "\\", version + "\\");
+    }
+
     [Fact] // case 61
     public void ActivatedDelta_ReportsAddedAndChangedOnly()
     {
@@ -282,6 +313,105 @@ public class MsvcActivationTests
 
         Assert.Equal(7, Msvc.Dispatch(Msvc.Parse(["cmd", "/c", "exit", "7"])!.Value));
     }
+
+    [Fact] // case 94: LIBCLANG_PATH points at the x64 copy, never the ARM64 one
+    public void LibclangPathToSet_PrefersX64_AndSkipsWhenAbsent()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("LIBCLANG_PATH", null);
+        string bat = VsLayoutBat(tmp, "vs");
+
+        Assert.Null(Msvc.LibclangPathToSet(bat)); // no Llvm tree at all
+
+        FakeLibclang(tmp, "vs", "ARM64");
+        Assert.Null(Msvc.LibclangPathToSet(bat)); // ARM64 alone is not a match
+
+        FakeLibclang(tmp, "vs", "x64");
+        Assert.Equal(tmp.At("vs", "VC", "Tools", "Llvm", "x64", "bin"),
+            Msvc.LibclangPathToSet(bat));
+    }
+
+    [Fact] // case 94: a LIBCLANG_PATH the user already set wins
+    public void LibclangPathToSet_UserValue_NotOverridden()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("LIBCLANG_PATH", @"C:\mine");
+        string bat = VsLayoutBat(tmp, "vs");
+        FakeLibclang(tmp, "vs", "x64");
+
+        Assert.Null(Msvc.LibclangPathToSet(bat));
+    }
+
+    [Fact] // case 95: both surfaces carry LIBCLANG_PATH into the activation
+    public void EnableAndExec_SetLibclangPath()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("LIBCLANG_PATH", null);
+        FakeLibclang(tmp, "vs", "x64");
+        env.Set("RBMANAGER_VSDEVCMD", VsLayoutBat(tmp, "vs"));
+        string expected = tmp.At("vs", "VC", "Tools", "Llvm", "x64", "bin");
+
+        using (var cap = new ConsoleCapture())
+        {
+            Assert.Equal(0, Msvc.Enable("powershell"));
+            Assert.Contains($"$env:LIBCLANG_PATH = '{expected}'", cap.OutLines);
+        }
+
+        string dump = Bat(tmp, "set > \"%~1\"");
+        string outFile = tmp.At("env.txt");
+        Assert.Equal(0, Msvc.Exec([dump, outFile]));
+        Assert.Contains($"LIBCLANG_PATH={expected}", File.ReadAllText(outFile));
+    }
+
+    [Fact] // case 96: an SDK whose libs are on disk activates normally
+    public void EnableAndExec_SdkLibsPresent_Activates()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("LIBCLANG_PATH", null);
+        (string dir, string version) = FakeSdk(tmp, withLibs: true);
+        env.Set("RBMANAGER_VSDEVCMD", VsLayoutBat(tmp, "vs",
+            $"set WindowsSdkDir={dir}", $"set WindowsSDKLibVersion={version}"));
+
+        using var cap = new ConsoleCapture();
+        Assert.Equal(0, Msvc.Enable("powershell"));
+        Assert.Equal(0, Msvc.Exec(["cmd", "/c", "exit", "0"]));
+    }
+
+    [Fact] // case 97: the component is installed but its libs are not
+    public void EnableAndExec_SdkLibsMissing_WarnOnStderr()
+    {
+        using var tmp = new TempDir();
+        using var env = new EnvScope();
+        env.Set("LIBCLANG_PATH", null);
+        (string dir, string version) = FakeSdk(tmp, withLibs: false);
+        env.Set("RBMANAGER_VSDEVCMD", VsLayoutBat(tmp, "vs",
+            $"set WindowsSdkDir={dir}", $"set WindowsSDKVersion={version}"));
+
+        using (var cap = new ConsoleCapture())
+        {
+            Assert.Equal(1, Msvc.Enable("powershell"));
+            Assert.Equal("", cap.Out);
+            Assert.Contains("no Windows SDK libraries", cap.Err);
+        }
+
+        using (var cap = new ConsoleCapture())
+        {
+            Assert.Equal(1, Msvc.Exec(["cmd", "/c", "exit", "0"]));
+            Assert.Contains("Windows 11 SDK", cap.Err);
+        }
+    }
+
+    [Fact] // case 98: VsDevCmd reporting no SDK change leaves the check inert
+    public void WindowsSdkLibsPresent_NoSdkVarsInDelta_True() =>
+        Assert.True(Msvc.WindowsSdkLibsPresent(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["PATH"] = @"C:\x",
+            }));
 
     [Fact] // case 71: an argument with spaces survives as one argument
     public void Exec_QuotesArgumentWithSpaces()
