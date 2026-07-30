@@ -194,7 +194,10 @@ internal static class Msvc
         string? year = EffectiveVsVer(vsver);
         string? vsdevcmd = ResolveVsDevCmd(year);
         if (vsdevcmd is null) return WarnMissingToolchain(year);
-        var env = ActivatedDelta(vsdevcmd);
+        var env = ActivatedDelta(vsdevcmd).ToList();
+        if (!WindowsSdkLibsPresent(ByKey(env))) return WarnMissingWindowsSdk();
+        if (LibclangPathToSet(vsdevcmd) is { } libclangBin)
+            env.Add(("LIBCLANG_PATH", libclangBin));
         foreach ((string key, string value) in env)
             Console.WriteLine(Assignment(target, key, value));
         // The mkmf gotcha: with NoDefaultCurrentDirectoryInExePath set,
@@ -209,7 +212,10 @@ internal static class Msvc
         string? year = EffectiveVsVer(vsver);
         string? vsdevcmd = ResolveVsDevCmd(year);
         if (vsdevcmd is null) return WarnMissingToolchain(year);
-        var delta = ActivatedDelta(vsdevcmd);
+        var delta = ActivatedDelta(vsdevcmd).ToList();
+        if (!WindowsSdkLibsPresent(ByKey(delta))) return WarnMissingWindowsSdk();
+        if (LibclangPathToSet(vsdevcmd) is { } libclangBin)
+            delta.Add(("LIBCLANG_PATH", libclangBin));
         // cmd.exe /c so that .cmd shims (gem, bundle) and PATHEXT resolve
         // the way they would if the user had typed the command directly.
         string commandLine = string.Join(' ', command.Select(QuoteArg));
@@ -230,6 +236,55 @@ internal static class Msvc
             ?? throw new InvalidOperationException("failed to start command");
         proc.WaitForExit();
         return proc.ExitCode;
+    }
+
+    private static Dictionary<string, string> ByKey(List<(string, string)> pairs) =>
+        pairs.ToDictionary(p => p.Item1, p => p.Item2, StringComparer.OrdinalIgnoreCase);
+
+    // bindgen (via clang-sys, an rb-sys/rustc-bindgen dependency) probes the
+    // VS install for libclang.dll itself; it does not consult PATH. VS
+    // ships both an ARM64 and an x64 copy of libclang.dll side by side, and
+    // clang-sys's search picks between them non-deterministically. Grabbing
+    // the ARM64 one fails every build on an x64 host with a LoadLibraryExW
+    // error. VsDevCmd itself never sets LIBCLANG_PATH, so this is a
+    // separate step layered on top of ActivatedDelta. A LIBCLANG_PATH the
+    // user already has set is left untouched.
+    // TODO(arm64): "x64" becomes host-arch-dependent here, same as the
+    // -arch=amd64/-host_arch=amd64 in ActivatedDelta.
+    internal static string? LibclangPathToSet(string vsdevcmd)
+    {
+        if (Environment.GetEnvironmentVariable("LIBCLANG_PATH") is { Length: > 0 })
+            return null;
+        // vsdevcmd is <installationPath>\Common7\Tools\VsDevCmd.bat.
+        string? installationPath =
+            Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(vsdevcmd)));
+        if (installationPath is null) return null;
+        string bin = Path.Combine(installationPath, "VC", "Tools", "Llvm", "x64", "bin");
+        return File.Exists(Path.Combine(bin, "libclang.dll")) ? bin : null;
+    }
+
+    // vswhere's -requires only confirms the VC.Tools.x86.x64 component is
+    // installed, not that its paired Windows SDK's library files are
+    // actually on disk; that gap surfaces much later as a bewildering
+    // linker error (or, worse, an unrelated-looking one if a non-MSVC
+    // link.exe shadows the real one on PATH). There is no stable vswhere
+    // component id for "this SDK version's libs exist", so this checks the
+    // lib tree directly, keyed off what VsDevCmd itself just reported in
+    // the activation delta. WindowsSDKLibVersion is the Lib subdirectory
+    // name in both the 8.1 (winv6.3) and 10 (10.0.x) layouts;
+    // WindowsSDKVersion, which only the 10 SDK sets, is the fallback.
+    // Neither appearing means VsDevCmd reported no SDK change and there is
+    // nothing to check against, so the check is skipped rather than
+    // failing closed.
+    // TODO(arm64): the x64 subdirectory becomes host-arch-dependent here.
+    internal static bool WindowsSdkLibsPresent(IReadOnlyDictionary<string, string> activated)
+    {
+        if (!activated.TryGetValue("WindowsSdkDir", out string? sdkDir)) return true;
+        if (!activated.TryGetValue("WindowsSDKLibVersion", out string? libVer) &&
+            !activated.TryGetValue("WindowsSDKVersion", out libVer))
+            return true;
+        return File.Exists(Path.Combine(
+            sdkDir, "Lib", libVer.TrimEnd('\\', '/'), "um", "x64", "kernel32.lib"));
     }
 
     // Runs VsDevCmd in a clean child and returns only the variables it added
@@ -402,6 +457,26 @@ internal static class Msvc
                    winget install Microsoft.VisualStudio.{year ?? "2022"}.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools"
 
                  (any Visual Studio edition with that workload also works)
+
+              2. Open a new terminal and re-run this command.
+            """);
+        return 1;
+    }
+
+    // The compiler is present but has nothing to link against. Refusing here
+    // beats activating a half-usable environment: the failure would
+    // otherwise land in the linker, where a missing kernel32.lib reads as a
+    // gem bug rather than an incomplete VS install.
+    private static int WarnMissingWindowsSdk()
+    {
+        Console.Error.WriteLine("""
+            rb: warning: the Visual Studio install has the MSVC compiler but no Windows SDK libraries; linking will fail.
+
+            To set one up:
+
+              1. Open the Visual Studio Installer, Modify the install, and add the
+                 "Windows 11 SDK" (or "Windows 10 SDK") component under
+                 "Desktop development with C++".
 
               2. Open a new terminal and re-run this command.
             """);
