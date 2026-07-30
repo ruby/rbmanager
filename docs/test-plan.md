@@ -366,6 +366,25 @@ Added with the command-surface change:
     `enable cmd` prints the stub's assignments, and `cmd /c exit 7`
     runs as a command and propagates 7.
 
+Added with `LIBCLANG_PATH` and the Windows SDK check. Both use a stub
+VsDevCmd.bat placed at `<root>\Common7\Tools\VsDevCmd.bat`, so the
+`installationPath` Msvc derives from it has the real layout's shape:
+
+94. `LibclangPathToSet`: no Llvm tree → null; an ARM64 `libclang.dll`
+    alone → still null (the wrong one must never be selected); an x64
+    one → its `bin` directory. With `LIBCLANG_PATH` already set in the
+    environment → null, whatever is on disk.
+95. `Enable`/`Exec` with an x64 `libclang.dll` present → the assignment
+    appears in the printed output and the variable reaches the child.
+96. `Enable`/`Exec` with the stub reporting a `WindowsSdkDir` and a
+    `WindowsSDKLibVersion` whose `um\x64\kernel32.lib` exists →
+    activates normally, exit 0.
+97. The same with the lib tree absent, and reporting the
+    `WindowsSDKVersion` fallback key instead → stderr names the missing
+    Windows SDK, exit 1, stdout empty.
+98. `WindowsSdkLibsPresent` with neither variable in the delta → true
+    (nothing was reported, so there is nothing to check).
+
 ### 4.10 Msvc against real Visual Studio — RequiresVS (opt-in)
 
 Skipped unless vswhere resolves an install (use a runtime skip, e.g.
