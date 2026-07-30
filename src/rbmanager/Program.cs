@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace RbManager;
 
@@ -208,9 +209,38 @@ internal static class Program
         {
             [var single] => single!,
             [] => throw new InvalidOperationException($"no installed ruby matches '{query}'"),
-            _ => throw new InvalidOperationException(
+            _ => HighestRevision(matches!) ?? throw new InvalidOperationException(
                 $"'{query}' is ambiguous: {string.Join(", ", matches)}"),
         };
+    }
+
+    // ruby-<version>[-<n>]-<platform>: a reissued release package
+    // (SIGNING.md in ruby/actions) differs from the original only by the
+    // numeric revision after the version. The revision never collides
+    // with a prerelease segment, which starts with a letter (rc1,
+    // preview1), and dev snapshot names never parse here because their
+    // date/commit segments sit between the version and the platform.
+    private static readonly Regex PackageName = new(
+        @"^ruby-(?<ver>\d+\.\d+\.\d+(?:-[a-z][a-z0-9]*)?)(?:-(?<rev>\d+))?-(?<plat>(?:x64|x86|arm64)-.+)$",
+        RegexOptions.IgnoreCase);
+
+    // When every match is the same ruby version on the same platform and
+    // they differ only in revision, the newest reissue wins; the
+    // superseded packages stay reachable by their full names. Anything
+    // else (different versions, dev snapshots, foreign names) stays
+    // ambiguous.
+    private static string? HighestRevision(string[] matches)
+    {
+        Match[] parsed = matches.Select(n => PackageName.Match(n)).ToArray();
+        if (parsed.Any(m => !m.Success)) return null;
+        bool sameRuby = parsed
+            .DistinctBy(m => $"{m.Groups["ver"].Value}|{m.Groups["plat"].Value}",
+                StringComparer.OrdinalIgnoreCase)
+            .Count() == 1;
+        if (!sameRuby) return null;
+        return parsed
+            .MaxBy(m => m.Groups["rev"].Success ? int.Parse(m.Groups["rev"].Value) : 0)!
+            .Value;
     }
 
     internal static string? CurrentTarget()
