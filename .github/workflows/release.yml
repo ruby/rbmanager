@@ -2,12 +2,19 @@
 # and their SHA-256 checksums to a GitHub release. Signing is described
 # in docs/code-signing.md; when the signing credentials are not
 # configured, the release is created as an unsigned draft instead.
+#
+# A workflow_dispatch run is a signing rehearsal: it builds, signs and
+# verifies exactly like a release, then uploads the signed binaries as
+# a workflow artifact instead of creating a GitHub release. Use it to
+# exercise the SignPath pipeline (for example against a test
+# certificate) without cutting a release.
 
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,15 +36,22 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          # Anchored, so a tag that is not a plain release version
-          # never reaches the interpolations below. Git refnames may
-          # contain quotes, so an unvalidated name could break out of
-          # a quoted pwsh string.
-          if ($env:GITHUB_REF_NAME -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$') {
-            Write-Output "::error::tag is not a release version tag"
-            exit 1
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            # Anchored, so a tag that is not a plain release version
+            # never reaches the interpolations below. Git refnames may
+            # contain quotes, so an unvalidated name could break out of
+            # a quoted pwsh string.
+            if ($env:GITHUB_REF_NAME -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$') {
+              Write-Output "::error::tag is not a release version tag"
+              exit 1
+            }
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            # Rehearsal build from a branch; the version only labels the
+            # workflow artifact.
+            $version = '0.0.0-rehearsal'
           }
-          "version=$($env:GITHUB_REF_NAME.Substring(1))" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
 
       - run: dotnet test rbmanager.sln
 
@@ -105,6 +119,7 @@ jobs:
           }
 
       - name: Create the GitHub release
+        if: github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,3 +137,11 @@ jobs:
           }
           $ghArgs += Get-ChildItem signed -File | ForEach-Object FullName
           gh @ghArgs
+
+      - name: Upload the rehearsal binaries
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rb-signed-rehearsal
+          path: signed/
+          if-no-files-found: error

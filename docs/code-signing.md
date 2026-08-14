@@ -15,8 +15,9 @@ rb.exe is the one binary users download directly with a browser, so it
 carries the Mark of the Web and faces SmartScreen head-on; unsigned, it
 is effectively blocked by the "Windows protected your PC" dialog. That
 makes it the highest-priority signing target of the whole distribution
-chain, ahead of the MSI and winget channels. CI builds and anything
-not built from a tag stay unsigned.
+chain, ahead of the MSI and winget channels. CI builds stay unsigned;
+besides tag builds, only the manually dispatched signing rehearsal
+(below) submits binaries for signing, and those are never published.
 
 ## Provider: SignPath Foundation now, replaceable later
 
@@ -67,7 +68,14 @@ When the SignPath credentials are not configured, the signing step is
 skipped with a workflow warning and the release is created as a draft
 so unsigned binaries are never published silently.
 
-## The test certificate period
+## Rehearsals and the test certificate period
+
+Running the Release workflow by hand (workflow_dispatch) is a signing
+rehearsal: it builds, signs and verifies exactly like a release, then
+uploads the signed binaries as the `rb-signed-rehearsal` workflow
+artifact and never creates a GitHub release. This is how the pipeline
+is exercised end to end before a real tag, and what SignPath's
+onboarding review runs against.
 
 While SignPath issues a test certificate, no machine trusts its chain,
 so `signtool verify` would always fail. Setting the repository
@@ -155,3 +163,5 @@ SignPath-side setup after approval:
    and note its slug in `SIGNPATH_SIGNING_POLICY_SLUG`.
 4. Create an API token for a CI user with submitter permission and
    store it as the `SIGNPATH_API_TOKEN` secret.
+5. Run a workflow_dispatch rehearsal (see above) and check that the
+   uploaded binaries carry the expected signature.
