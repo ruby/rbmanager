@@ -29,7 +29,15 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          "version=$('${{ github.ref_name }}'.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+          # Anchored, so a tag that is not a plain release version
+          # never reaches the interpolations below. Git refnames may
+          # contain quotes, so an unvalidated name could break out of
+          # a quoted pwsh string.
+          if ($env:GITHUB_REF_NAME -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$') {
+            Write-Output "::error::tag is not a release version tag"
+            exit 1
+          }
+          "version=$($env:GITHUB_REF_NAME.Substring(1))" >> $env:GITHUB_OUTPUT
 
       - run: dotnet test rbmanager.sln
 
@@ -105,11 +113,13 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SIGNED: ${{ steps.sign.outputs.signed }}
         run: |
-          $ghArgs = @('release', 'create', '${{ github.ref_name }}',
-            '--title', 'rbmanager ${{ needs.build.outputs.version }}',
+          $ghArgs = @('release', 'create', $env:GITHUB_REF_NAME,
+            '--title', "rbmanager $env:VERSION",
             '--generate-notes', '--verify-tag')
-          if ('${{ steps.sign.outputs.signed }}' -ne 'true') {
+          if ($env:SIGNED -ne 'true') {
             # Never publish unsigned binaries silently; leave the
             # decision to a human.
             $ghArgs += '--draft'
