@@ -52,7 +52,8 @@ internal static class Program
             usage: rb <command>
 
               setup [--yes]          copy rb onto PATH and set up the VC++ runtime
-              install <zip|url>      install a ruby binary package from a zip file or URL
+              install <version|zip>  install a ruby binary package resolved from the
+                                     binary index, or from a zip file or URL
               list                   list installed rubies
               use <version>          switch the active ruby
               uninstall <version>    remove an installed ruby
@@ -88,10 +89,24 @@ internal static class Program
 
     internal static async Task<int> Install(string source)
     {
+        // Anything that is not a URL or a zip path is a version or tag to
+        // resolve through the binary index (BinaryIndex.cs). sha256
+        // verification is only possible on this path; a direct URL
+        // carries no expected checksum.
+        string? sha256 = null;
+        if (!IsUrl(source) && !LooksLikeZipPath(source))
+        {
+            Build build = await BinaryIndex.Resolve(source);
+            Console.WriteLine($"Resolved {source} to {build.Name}");
+            if (!build.Signed)
+                Console.Error.WriteLine($"warning: {build.Name} is not code-signed");
+            source = build.Url;
+            sha256 = build.Sha256;
+        }
+
         string zip = source;
         string? downloaded = null;
-        if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        if (IsUrl(source))
         {
             downloaded = Path.Combine(Path.GetTempPath(), Path.GetFileName(new Uri(source).LocalPath));
             Console.WriteLine($"Downloading {source} ...");
@@ -106,6 +121,7 @@ internal static class Program
 
         try
         {
+            if (sha256 is not null) await VerifySha256(zip, sha256);
             string name = SingleRootDirectory(zip);
             string dest = Path.Combine(Rubies, name);
             if (Directory.Exists(dest))
@@ -127,6 +143,28 @@ internal static class Program
         {
             if (downloaded is not null) File.Delete(downloaded);
         }
+    }
+
+    private static bool IsUrl(string source) =>
+        source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        source.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+    // Tags in the index never contain a path separator or a .zip suffix,
+    // so those mark the argument as a zip path even when the file does
+    // not exist (a typo'd path must fail as a missing file, not as an
+    // unknown version).
+    private static bool LooksLikeZipPath(string source) =>
+        File.Exists(source) || source.Contains('\\') || source.Contains('/') ||
+        source.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+
+    internal static async Task VerifySha256(string file, string expected)
+    {
+        await using var stream = File.OpenRead(file);
+        string actual = Convert.ToHexString(
+            await System.Security.Cryptography.SHA256.HashDataAsync(stream));
+        if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"sha256 mismatch for {Path.GetFileName(file)}: expected {expected}, got {actual.ToLowerInvariant()}");
     }
 
     internal static int List()

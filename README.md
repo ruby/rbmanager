@@ -23,7 +23,7 @@ rather than after the tool. rbmanager remains the product name.
 
 ```
 rb setup [--yes]           copy rb onto PATH and set up the VC++ runtime
-rb install <zip|url>       install a ruby binary package
+rb install <version|zip>   install a ruby binary package
 rb list                    list installed rubies
 rb use <version>           switch the active ruby
 rb uninstall <version>     remove an installed ruby
@@ -39,6 +39,18 @@ which stands in for an installer until the winget and MSI channels
 ship. It also checks for the VC++ 2015-2022 redistributable the
 official mswin packages depend on, and offers to download and install
 it (signature-verified, elevated); `--yes` skips the consent prompt.
+
+`install` takes a version or a tag and resolves it through the binary
+index published at
+<https://cache.ruby-lang.org/pub/ruby/binaries/index.json> (regenerated
+by ruby/actions after every package publish). `rb install 4.0.5` picks
+that release, `rb install 4.0` the newest release of the series, and
+`rb install ruby-dev` the newest master snapshot. A reissued release
+resolves to its newest revision, and the superseded packages stay
+reachable by their revisioned names such as `4.0.5-0`. The download is
+verified against the sha256 recorded in the index. An unsigned build
+(all dev snapshots are unsigned) installs with a warning. A zip path or
+URL skips the index and installs directly.
 
 `msvc` activates an installed Visual Studio (or Build Tools) MSVC
 toolchain for building C extension gems and runs the rest of the
