@@ -30,7 +30,10 @@ internal static class Program
                 ["list"] => List(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                ["version"] => Version(),
+                // The flag spellings answer too: probing a tool with
+                // --version is how a caller identifies the build it got,
+                // and falling to usage there reads as a broken binary.
+                ["version" or "--version" or "-V"] => Version(),
                 // Everything after `msvc` belongs to Msvc's own parser: it
                 // owns one reserved word (`enable`) and passes the rest
                 // through as the user's command line.
@@ -62,6 +65,7 @@ internal static class Program
               msvc --list            list installed Visual Studio C++ toolchains
                                      (msvc and msvc enable accept --vsver <year>)
               version                print the rbmanager version
+                                     (also --version, -V)
             """);
         return 2;
     }

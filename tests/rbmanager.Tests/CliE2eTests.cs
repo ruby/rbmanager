@@ -58,11 +58,14 @@ public class CliE2eTests
         Assert.StartsWith("rb: ", r.Err);
     }
 
-    [Fact] // case 88
-    public void Version_OneLine_Exit0()
+    [Theory] // cases 88, 118: the flag spellings print the same line
+    [InlineData("version")]
+    [InlineData("--version")]
+    [InlineData("-V")]
+    public void Version_OneLine_Exit0(string spelling)
     {
         using var sb = new E2eSandbox();
-        RbResult r = sb.Run("version");
+        RbResult r = sb.Run(spelling);
 
         Assert.Equal(0, r.ExitCode);
         string line = Assert.Single(Lines(r.Out));

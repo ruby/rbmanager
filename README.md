@@ -30,7 +30,7 @@ rb uninstall <version>     remove an installed ruby
 rb msvc <command...>       run a command with the MSVC build env applied
 rb msvc enable [shell]     print the MSVC build env to eval (cmd|powershell)
 rb msvc --list             list installed Visual Studio C++ toolchains
-rb version                 print the rbmanager version
+rb version                 print the rbmanager version (also --version, -V)
 ```
 
 rb is a bare exe; `setup` copies it to
@@ -64,10 +64,12 @@ version, and `msvc --list` shows what is installed. Apart from
 `msvc` operations are spelled as flags.
 
 `version` identifies the running binary, in cargo's shape, as in
-`rbmanager 0.1.0 (9a1b2c3 2026-07-28)`. The version is the release tag
-the build came from, or the number in `rbmanager.csproj` between
-releases. The commit and date are stamped in at build time, and are
-omitted when there is no git checkout to read them from.
+`rbmanager 0.1.0 (9a1b2c3 2026-07-28)`. `--version` and `-V` print the
+same line, so probing an unknown rb never lands in usage. The version
+is the release tag the build came from, or the number in
+`rbmanager.csproj` between releases. The commit and date are stamped in
+at build time, and are omitted when there is no git checkout to read
+them from.
 
 The official mswin packages deliberately do not bundle
 vcruntime140.dll (https://bugs.ruby-lang.org/issues/22180) and expect
