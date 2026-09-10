@@ -68,13 +68,14 @@ public class BinaryIndexTests
         Assert.False(b.Signed);
     }
 
-    [Fact] // case 100
+    [Fact] // case 100: an rb older than the feed names itself and the remedy
     public void Parse_UnsupportedSchema_Throws()
     {
         var ex = Assert.Throws<InvalidOperationException>(
             () => BinaryIndex.Parse("""{"schema": 2, "next": null, "builds": []}"""));
         Assert.Contains("schema 2", ex.Message);
-        Assert.Contains("upgrade rb", ex.Message);
+        Assert.StartsWith(Program.SelfVersion(), ex.Message);
+        Assert.Contains(Program.ReleasesUrl, ex.Message);
     }
 
     [Fact] // case 101: a series tag sits on every release of the series
@@ -156,6 +157,38 @@ public class BinaryIndexTests
 
         Assert.Equal(b.Name, BinaryIndex.Pick([b], "ruby-4.0.5-x64-mswin64_140")!.Name);
         Assert.Equal(b.Name, BinaryIndex.Pick([b], "RUBY-4.0.5-X64-MSWIN64_140")!.Name);
+    }
+
+    [Fact] // case 119: the order `rb list --remote` prints, newest first
+    public void Available_NewestFirst()
+    {
+        Build[] builds =
+        [
+            Make("ruby-4.0.4-x64-mswin64_140", "4.0.4", tags: ["4.0.4", "4.0"]),
+            Make("ruby-4.0.5-x64-mswin64_140", "4.0.5", revision: 0, tags: ["4.0.5-0"]),
+            Make("ruby-4.0.5-1-x64-mswin64_140", "4.0.5", revision: 1, tags: ["4.0.5-1"]),
+        ];
+
+        Assert.Equal(
+            [
+                "ruby-4.0.5-1-x64-mswin64_140",
+                "ruby-4.0.5-x64-mswin64_140",
+                "ruby-4.0.4-x64-mswin64_140",
+            ],
+            BinaryIndex.Available(builds).Select(b => b.Name).ToArray());
+    }
+
+    [Fact] // case 120: builds this rb cannot install are not offered
+    public void Available_ForeignPlatform_Filtered()
+    {
+        Build[] builds =
+        [
+            Make("ruby-4.0.5-arm64-mswin64_140", "4.0.5", platform: "arm64-mswin64_140"),
+            Make("ruby-4.0.5-x64-mswin64_140", "4.0.5"),
+        ];
+
+        Build b = Assert.Single(BinaryIndex.Available(builds));
+        Assert.Equal("ruby-4.0.5-x64-mswin64_140", b.Name);
     }
 
     [Fact] // case 107

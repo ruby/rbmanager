@@ -48,6 +48,14 @@ public class CliE2eTests
         Assert.Contains("usage: rb <command>", r.Out);
     }
 
+    [Fact] // case 124: --remote is the only flag `list` takes
+    public void ListWithUnknownFlag_Usage_Exit2()
+    {
+        using var sb = new E2eSandbox();
+        Assert.Equal(2, sb.Run("list", "--online").ExitCode);
+        Assert.Equal(2, sb.Run("list", "--remote", "extra").ExitCode);
+    }
+
     [Fact] // case 37
     public void FailingCommand_ErrorToStderr_Exit1_EmptyStdout()
     {
@@ -58,11 +66,14 @@ public class CliE2eTests
         Assert.StartsWith("rb: ", r.Err);
     }
 
-    [Fact] // case 88
-    public void Version_OneLine_Exit0()
+    [Theory] // cases 88, 118: the flag spellings print the same line
+    [InlineData("version")]
+    [InlineData("--version")]
+    [InlineData("-V")]
+    public void Version_OneLine_Exit0(string spelling)
     {
         using var sb = new E2eSandbox();
-        RbResult r = sb.Run("version");
+        RbResult r = sb.Run(spelling);
 
         Assert.Equal(0, r.ExitCode);
         string line = Assert.Single(Lines(r.Out));

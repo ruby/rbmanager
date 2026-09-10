@@ -18,6 +18,8 @@ internal static class Program
     private static string Rubies => Path.Combine(Root, "rubies");
     private static string Current => Path.Combine(Root, "current");
 
+    internal const string ReleasesUrl = "https://github.com/ruby/rbmanager/releases";
+
     private static async Task<int> Main(string[] args)
     {
         try
@@ -28,9 +30,13 @@ internal static class Program
                 ["setup", "--yes" or "-y"] => await Setup(assumeYes: true),
                 ["install", var source] => await Install(source),
                 ["list"] => List(),
+                ["list", "--remote"] => await ListRemote(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                ["version"] => Version(),
+                // Probing a tool with --version is how a caller identifies
+                // the build it got, so answering with usage reads as a
+                // broken binary rather than as an old one.
+                ["version" or "--version" or "-V"] => Version(),
                 // Everything after `msvc` belongs to Msvc's own parser: it
                 // owns one reserved word (`enable`) and passes the rest
                 // through as the user's command line.
@@ -55,6 +61,7 @@ internal static class Program
               install <version|zip>  install a ruby binary package resolved from the
                                      binary index, or from a zip file or URL
               list                   list installed rubies
+              list --remote          list the builds the binary index offers
               use <version>          switch the active ruby
               uninstall <version>    remove an installed ruby
               msvc <command...>      run a command with the MSVC build env applied
@@ -62,6 +69,7 @@ internal static class Program
               msvc --list            list installed Visual Studio C++ toolchains
                                      (msvc and msvc enable accept --vsver <year>)
               version                print the rbmanager version
+                                     (also --version, -V)
             """);
         return 2;
     }
@@ -175,6 +183,26 @@ internal static class Program
             string name = Path.GetFileName(dir);
             Console.WriteLine($"{(name == current ? "*" : " ")} {name}");
         }
+        return 0;
+    }
+
+    // The index side of `list`, so that finding a build never requires
+    // fetching and interpreting the feed. The tags are the arguments
+    // `install` takes, which is why they carry the line.
+    internal static async Task<int> ListRemote()
+    {
+        Build[] builds = await BinaryIndex.Available();
+        if (builds.Length == 0)
+        {
+            Console.Error.WriteLine(
+                $"rb: the binary index offers no {BinaryIndex.Platform} builds");
+            return 0;
+        }
+        int name = builds.Max(b => b.Name.Length);
+        int channel = builds.Max(b => b.Channel.Length);
+        foreach (Build b in builds)
+            Console.WriteLine($"{b.Name.PadRight(name)}  {b.Channel.PadRight(channel)}  " +
+                string.Join(", ", b.Tags));
         return 0;
     }
 

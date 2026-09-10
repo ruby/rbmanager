@@ -417,6 +417,8 @@ values are whatever the build stamped in and the tests pin the shape.
 
 88. (E2E) `rb version` → exit 0 and one line matching
     `rbmanager <version> (<commit> <date>)`, the parenthetical optional.
+118. (E2E) `rb --version` and `rb -V` print that same line and exit 0,
+     so probing an unknown rb never lands in usage.
 89. (Unit) `FormatVersion` with all three present → the full
     cargo-shaped line.
 90. (Unit) `FormatVersion` with the commit, the date, or both missing →
@@ -450,8 +452,8 @@ Unit (`BinaryIndexTests`):
 99. `Parse` on a page in the published feed's shape → every key of the
     build populated, including the snake_case `commit_date` /
     `published_at` mappings.
-100. `Parse` with `schema: 2` → error naming the schema and telling the
-     user to upgrade rb.
+100. `Parse` with `schema: 2` → error naming the schema, the running
+     `SelfVersion`, and the releases page to upgrade from.
 101. A series tag (`4.0`, `4`) sits on every release of the series →
      the highest version wins, in either feed order.
 102. Two revisions of one version → the higher revision wins, in either
@@ -478,7 +480,7 @@ Integration (`InstallFromIndexTests`, Serial):
 113. A non-null `next` chains to the following page (relative to the
      feed URL).
 114. `RBMANAGER_INDEX_URL` accepts a `file://` URL.
-115. `schema: 2` in the feed → the upgrade-rb error, nothing installed.
+115. `schema: 2` in the feed → the upgrade error, nothing installed.
 116. No matching build → `no binary package matches '<q>' in the index`.
 117. A missing zip path (`.zip` suffix or path separator) fails as a
      missing file and never falls through to index resolution.
@@ -489,6 +491,30 @@ Network (`BinaryIndexNetworkTests`, `Category=Network`, gated on
 109. The published index parses, and `ruby-dev` resolves to an
      `x64-mswin64_140` build with a well-formed sha256 and a
      cache.ruby-lang.org URL.
+
+### 4.14 Program + BinaryIndex: `rb list --remote`
+
+The same feed and the same `RBMANAGER_INDEX_URL` seam as 4.13, rendered
+instead of installed: one line per build for this platform, newest
+first, in the order `Pick` resolves.
+
+Unit (`BinaryIndexTests`):
+
+119. `Available` orders newest first, version before revision.
+120. `Available` drops builds of other platforms.
+
+Integration (`ListRemoteTests`, Serial):
+
+121. Name, channel and the `install` tags, newest first, in aligned
+     columns.
+122. An index with nothing for this platform → empty stdout, a note on
+     stderr, exit 0.
+123. `schema: 2` fails here as it does on install.
+
+E2E (`CliE2eTests`):
+
+124. `--remote` is the only flag `list` takes, and it takes no
+     argument; anything else is usage and exit 2.
 
 ## 5. Execution plan
 

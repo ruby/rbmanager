@@ -156,7 +156,7 @@ public class InstallFromIndexTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => Program.Install("4.1-dev"));
 
-        Assert.Contains("upgrade rb", ex.Message);
+        Assert.Contains(Program.ReleasesUrl, ex.Message);
     }
 
     [Fact] // case 116

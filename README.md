@@ -25,12 +25,13 @@ rather than after the tool. rbmanager remains the product name.
 rb setup [--yes]           copy rb onto PATH and set up the VC++ runtime
 rb install <version|zip>   install a ruby binary package
 rb list                    list installed rubies
+rb list --remote           list the builds the binary index offers
 rb use <version>           switch the active ruby
 rb uninstall <version>     remove an installed ruby
 rb msvc <command...>       run a command with the MSVC build env applied
 rb msvc enable [shell]     print the MSVC build env to eval (cmd|powershell)
 rb msvc --list             list installed Visual Studio C++ toolchains
-rb version                 print the rbmanager version
+rb version                 print the rbmanager version (also --version, -V)
 ```
 
 rb is a bare exe; `setup` copies it to
@@ -52,6 +53,18 @@ verified against the sha256 recorded in the index. An unsigned build
 (all dev snapshots are unsigned) installs with a warning. A zip path or
 URL skips the index and installs directly.
 
+`list --remote` prints what the index currently offers for this
+platform, newest first: the package name, the channel, and the tags
+`install` accepts for it. It is the counterpart of `list`, which shows
+what is installed, and it exists so that nothing outside rbmanager has
+to fetch and interpret the feed.
+
+The feed's `schema` number is how an index that has moved on tells an
+old rb so. Every command that reads the index (`install`,
+`list --remote`) fails on an unknown schema with the running version
+and <https://github.com/ruby/rbmanager/releases>, which is the one
+signal rb can give about its own age.
+
 `msvc` activates an installed Visual Studio (or Build Tools) MSVC
 toolchain for building C extension gems and runs the rest of the
 command line under it, as in `rb msvc gem install nokogiri`;
@@ -64,10 +77,12 @@ version, and `msvc --list` shows what is installed. Apart from
 `msvc` operations are spelled as flags.
 
 `version` identifies the running binary, in cargo's shape, as in
-`rbmanager 0.1.0 (9a1b2c3 2026-07-28)`. The version is the release tag
-the build came from, or the number in `rbmanager.csproj` between
-releases. The commit and date are stamped in at build time, and are
-omitted when there is no git checkout to read them from.
+`rbmanager 0.1.0 (9a1b2c3 2026-07-28)`. `--version` and `-V` print the
+same line, so probing an unknown rb never lands in usage. The version
+is the release tag the build came from, or the number in
+`rbmanager.csproj` between releases. The commit and date are stamped in
+at build time, and are omitted when there is no git checkout to read
+them from.
 
 The official mswin packages deliberately do not bundle
 vcruntime140.dll (https://bugs.ruby-lang.org/issues/22180) and expect
