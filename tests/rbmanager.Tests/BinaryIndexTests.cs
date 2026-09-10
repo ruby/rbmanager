@@ -68,13 +68,14 @@ public class BinaryIndexTests
         Assert.False(b.Signed);
     }
 
-    [Fact] // case 100
+    [Fact] // case 100: an rb older than the feed names itself and the remedy
     public void Parse_UnsupportedSchema_Throws()
     {
         var ex = Assert.Throws<InvalidOperationException>(
             () => BinaryIndex.Parse("""{"schema": 2, "next": null, "builds": []}"""));
         Assert.Contains("schema 2", ex.Message);
-        Assert.Contains("upgrade rb", ex.Message);
+        Assert.StartsWith(Program.SelfVersion(), ex.Message);
+        Assert.Contains(Program.ReleasesUrl, ex.Message);
     }
 
     [Fact] // case 101: a series tag sits on every release of the series

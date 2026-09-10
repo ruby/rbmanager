@@ -18,6 +18,8 @@ internal static class Program
     private static string Rubies => Path.Combine(Root, "rubies");
     private static string Current => Path.Combine(Root, "current");
 
+    internal const string ReleasesUrl = "https://github.com/ruby/rbmanager/releases";
+
     private static async Task<int> Main(string[] args)
     {
         try

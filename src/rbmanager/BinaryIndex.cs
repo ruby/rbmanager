@@ -53,9 +53,14 @@ internal static class BinaryIndex
     {
         IndexPage page = JsonSerializer.Deserialize(json, IndexJsonContext.Default.IndexPage)
             ?? throw new InvalidOperationException("the binary index is empty");
+        // The schema number is the only channel the feed has for telling
+        // an old rb that it is old, so the message names the running
+        // build and where a newer one comes from instead of leaving the
+        // reader to work out which rb answered.
         if (page.Schema != 1)
             throw new InvalidOperationException(
-                $"the binary index has schema {page.Schema}, which this rb does not understand; upgrade rb");
+                $"{Program.SelfVersion()} does not understand schema {page.Schema} " +
+                $"of the binary index. Upgrade from {Program.ReleasesUrl}");
         return page;
     }
 

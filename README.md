@@ -59,6 +59,12 @@ platform, newest first: the package name, the channel, and the tags
 what is installed, and it exists so that nothing outside rbmanager has
 to fetch and interpret the feed.
 
+The feed's `schema` number is how an index that has moved on tells an
+old rb so. Every command that reads the index (`install`,
+`list --remote`) fails on an unknown schema with the running version
+and <https://github.com/ruby/rbmanager/releases>, which is the one
+signal rb can give about its own age.
+
 `msvc` activates an installed Visual Studio (or Build Tools) MSVC
 toolchain for building C extension gems and runs the rest of the
 command line under it, as in `rb msvc gem install nokogiri`;
