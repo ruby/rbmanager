@@ -33,9 +33,9 @@ internal static class Program
                 ["list", "--remote"] => await ListRemote(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
-                // The flag spellings answer too: probing a tool with
-                // --version is how a caller identifies the build it got,
-                // and falling to usage there reads as a broken binary.
+                // Probing a tool with --version is how a caller identifies
+                // the build it got, so answering with usage reads as a
+                // broken binary rather than as an old one.
                 ["version" or "--version" or "-V"] => Version(),
                 // Everything after `msvc` belongs to Msvc's own parser: it
                 // owns one reserved word (`enable`) and passes the rest
@@ -186,10 +186,9 @@ internal static class Program
         return 0;
     }
 
-    // The index side of `list`: what this rb can install, so a caller
-    // never has to fetch and interpret the feed itself. The tags are the
-    // arguments `install` takes, so they carry the line; the name is what
-    // the install ends up called.
+    // The index side of `list`, so that finding a build never requires
+    // fetching and interpreting the feed. The tags are the arguments
+    // `install` takes, which is why they carry the line.
     internal static async Task<int> ListRemote()
     {
         Build[] builds = await BinaryIndex.Available();
