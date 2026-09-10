@@ -22,7 +22,13 @@ internal static class BinaryIndex
             ? url
             : DefaultUrl;
 
-    public static async Task<Build> Resolve(string query)
+    public static async Task<Build> Resolve(string query) =>
+        Pick(await FetchAll(), query) ?? throw new InvalidOperationException(
+            $"no binary package matches '{query}' in the index");
+
+    public static async Task<Build[]> Available() => Available(await FetchAll());
+
+    private static async Task<List<Build>> FetchAll()
     {
         var page = new Uri(Url, UriKind.Absolute);
         var builds = new List<Build>();
@@ -33,8 +39,7 @@ internal static class BinaryIndex
             if (index.Next is null) break;
             page = new Uri(page, index.Next);
         }
-        return Pick(builds, query) ?? throw new InvalidOperationException(
-            $"no binary package matches '{query}' in the index");
+        return builds;
     }
 
     private static async Task<string> Fetch(Uri uri)
@@ -56,17 +61,25 @@ internal static class BinaryIndex
 
     // The newest match wins regardless of feed order: series tags like
     // "4.0" sit on every 4.0.x release, and dev tags like "4.1-dev" on
-    // every snapshot of the series. Ordering by version, then reissue
-    // revision (SIGNING.md in ruby/actions), then commit date keeps this
-    // consistent with Program.Resolve's revision handling for installed
-    // rubies.
+    // every snapshot of the series.
     internal static Build? Pick(IEnumerable<Build> builds, string query) =>
         builds
             .Where(b => b.Platform == Platform)
             .Where(b => b.Tags.Contains(query, StringComparer.OrdinalIgnoreCase) ||
                 string.Equals(b.Name, query, StringComparison.OrdinalIgnoreCase))
-            .MaxBy(b => (NumericVersion(b.Version), b.Revision ?? 0,
-                b.CommitDate ?? b.PublishedAt ?? "", b.Commit ?? ""));
+            .MaxBy(Rank);
+
+    // Everything installable here, newest first. Same order Pick resolves
+    // in, so a tag always installs the topmost line carrying it.
+    internal static Build[] Available(IEnumerable<Build> builds) =>
+        builds.Where(b => b.Platform == Platform).OrderByDescending(Rank).ToArray();
+
+    // Version, then reissue revision (SIGNING.md in ruby/actions), then
+    // commit date, which keeps this consistent with Program.Resolve's
+    // revision handling for installed rubies.
+    private static (Version, int, string, string) Rank(Build b) =>
+        (NumericVersion(b.Version), b.Revision ?? 0,
+            b.CommitDate ?? b.PublishedAt ?? "", b.Commit ?? "");
 
     // The numeric prefix of `version` ("4.1.0dev" and "4.1.0-rc1" both
     // compare as 4.1.0). Channel suffixes never decide between two

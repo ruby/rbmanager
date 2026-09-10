@@ -48,6 +48,14 @@ public class CliE2eTests
         Assert.Contains("usage: rb <command>", r.Out);
     }
 
+    [Fact] // case 124: --remote is the only flag `list` takes
+    public void ListWithUnknownFlag_Usage_Exit2()
+    {
+        using var sb = new E2eSandbox();
+        Assert.Equal(2, sb.Run("list", "--online").ExitCode);
+        Assert.Equal(2, sb.Run("list", "--remote", "extra").ExitCode);
+    }
+
     [Fact] // case 37
     public void FailingCommand_ErrorToStderr_Exit1_EmptyStdout()
     {

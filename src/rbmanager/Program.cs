@@ -28,6 +28,7 @@ internal static class Program
                 ["setup", "--yes" or "-y"] => await Setup(assumeYes: true),
                 ["install", var source] => await Install(source),
                 ["list"] => List(),
+                ["list", "--remote"] => await ListRemote(),
                 ["use", var name] => Use(name),
                 ["uninstall", var name] => Uninstall(name),
                 // The flag spellings answer too: probing a tool with
@@ -58,6 +59,7 @@ internal static class Program
               install <version|zip>  install a ruby binary package resolved from the
                                      binary index, or from a zip file or URL
               list                   list installed rubies
+              list --remote          list the builds the binary index offers
               use <version>          switch the active ruby
               uninstall <version>    remove an installed ruby
               msvc <command...>      run a command with the MSVC build env applied
@@ -179,6 +181,27 @@ internal static class Program
             string name = Path.GetFileName(dir);
             Console.WriteLine($"{(name == current ? "*" : " ")} {name}");
         }
+        return 0;
+    }
+
+    // The index side of `list`: what this rb can install, so a caller
+    // never has to fetch and interpret the feed itself. The tags are the
+    // arguments `install` takes, so they carry the line; the name is what
+    // the install ends up called.
+    internal static async Task<int> ListRemote()
+    {
+        Build[] builds = await BinaryIndex.Available();
+        if (builds.Length == 0)
+        {
+            Console.Error.WriteLine(
+                $"rb: the binary index offers no {BinaryIndex.Platform} builds");
+            return 0;
+        }
+        int name = builds.Max(b => b.Name.Length);
+        int channel = builds.Max(b => b.Channel.Length);
+        foreach (Build b in builds)
+            Console.WriteLine($"{b.Name.PadRight(name)}  {b.Channel.PadRight(channel)}  " +
+                string.Join(", ", b.Tags));
         return 0;
     }
 

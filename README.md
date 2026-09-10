@@ -25,6 +25,7 @@ rather than after the tool. rbmanager remains the product name.
 rb setup [--yes]           copy rb onto PATH and set up the VC++ runtime
 rb install <version|zip>   install a ruby binary package
 rb list                    list installed rubies
+rb list --remote           list the builds the binary index offers
 rb use <version>           switch the active ruby
 rb uninstall <version>     remove an installed ruby
 rb msvc <command...>       run a command with the MSVC build env applied
@@ -51,6 +52,12 @@ reachable by their revisioned names such as `4.0.5-0`. The download is
 verified against the sha256 recorded in the index. An unsigned build
 (all dev snapshots are unsigned) installs with a warning. A zip path or
 URL skips the index and installs directly.
+
+`list --remote` prints what the index currently offers for this
+platform, newest first: the package name, the channel, and the tags
+`install` accepts for it. It is the counterpart of `list`, which shows
+what is installed, and it exists so that nothing outside rbmanager has
+to fetch and interpret the feed.
 
 `msvc` activates an installed Visual Studio (or Build Tools) MSVC
 toolchain for building C extension gems and runs the rest of the
