@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
-PackageIdentifier: RubyLang.rbmanager
+PackageIdentifier: Ruby.RubyInstallManager
 PackageVersion: 0.1.0
 InstallerType: portable
 Commands:

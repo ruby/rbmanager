@@ -1,8 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.9.0.schema.json
 # PoC manifest. Before submitting to microsoft/winget-pkgs:
-# - decide the final PackageIdentifier (publisher part is provisional)
 # - publish the exe on GitHub Releases and fix InstallerUrl/InstallerSha256
-PackageIdentifier: RubyLang.rbmanager
+PackageIdentifier: Ruby.RubyInstallManager
 PackageVersion: 0.1.0
 DefaultLocale: en-US
 ManifestType: version
