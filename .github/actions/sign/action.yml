@@ -5,10 +5,10 @@
 
 name: Sign release binaries
 description: >-
-  Sends the unsigned release artifact to the code-signing provider and
-  places the signed files in the output directory. When the provider
-  credentials are not configured, the binaries pass through unsigned
-  with a workflow warning.
+  Sends the unsigned release artifact to the code-signing provider,
+  places the signed files in the output directory and verifies the
+  signatures. When the provider credentials are not configured, the
+  binaries pass through unsigned with a workflow warning.
 
 inputs:
   github-artifact-id:
@@ -39,6 +39,31 @@ inputs:
     description: SignPath signing policy slug.
     required: false
     default: 'release-signing'
+  signpath-artifact-configuration-slug:
+    description: >-
+      SignPath artifact configuration slug. Leave empty to use the
+      project's default configuration.
+    required: false
+    default: ''
+  certificate-thumbprint:
+    description: >-
+      SHA-1 thumbprint of the expected signing certificate. When set,
+      verification requires every signature to come from that exact
+      certificate. Leave empty to accept any chain the default
+      Authenticode policy trusts, which does not distinguish our
+      certificate from any other trusted one.
+    required: false
+    default: ''
+  require-trusted-chain:
+    description: >-
+      Whether every signature must chain to a root the machine trusts.
+      Set to false while signing with a SignPath test certificate, which
+      is deliberately absent from the Windows trust store, so the
+      pipeline can be rehearsed end to end. Verification then only
+      asserts that a signature from the expected certificate is present,
+      which is a rehearsal check, not a release gate.
+    required: false
+    default: 'true'
 
 outputs:
   signed:
@@ -58,12 +83,66 @@ runs:
         organization-id: ${{ inputs.signpath-organization-id }}
         project-slug: ${{ inputs.signpath-project-slug }}
         signing-policy-slug: ${{ inputs.signpath-signing-policy-slug }}
+        artifact-configuration-slug: ${{ inputs.signpath-artifact-configuration-slug }}
         github-artifact-id: ${{ inputs.github-artifact-id }}
         wait-for-completion: true
         # Release signing needs a manual approval in the SignPath UI,
         # so leave ample time before giving up.
         wait-for-completion-timeout-in-seconds: '3600'
         output-artifact-directory: ${{ inputs.output-directory }}
+
+    - name: Verify the Authenticode signatures
+      if: inputs.signpath-api-token != ''
+      shell: pwsh
+      env:
+        OUTPUT_DIR: ${{ inputs.output-directory }}
+        THUMBPRINT: ${{ inputs.certificate-thumbprint }}
+        REQUIRE_TRUST: ${{ inputs.require-trusted-chain }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $exes = @(Get-ChildItem $env:OUTPUT_DIR -Filter *.exe)
+        # The release artifact carries rb-x64.exe and rb-arm64.exe; fewer
+        # means the signing service returned a truncated artifact.
+        if ($exes.Count -lt 2) { throw "unexpectedly few signed binaries: $($exes.Count)" }
+        if ($env:REQUIRE_TRUST -eq 'true') {
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName | Select-Object -Last 1
+          if (-not $signtool) { throw 'signtool.exe not found under Windows Kits\10\bin; check the runner image' }
+          # /tw fails a signature that carries no RFC 3161 timestamp,
+          # which docs/code-signing.md promises. /sha1 pins the signing
+          # certificate when a thumbprint is configured; without it the
+          # default policy accepts any trusted chain, not specifically
+          # ours.
+          $flags = @('/pa', '/tw')
+          if ($env:THUMBPRINT) { $flags += @('/sha1', $env:THUMBPRINT) }
+          foreach ($exe in $exes) {
+            & $signtool.FullName verify @flags /q $exe.FullName
+            if ($LASTEXITCODE -ne 0) {
+              # /q suppressed the reason, so re-run verbose to record
+              # whether the signature is missing, the chain is untrusted,
+              # the timestamp is absent or the certificate is not ours.
+              & $signtool.FullName verify @flags /v $exe.FullName
+              throw "signature verification failed: $($exe.Name)"
+            }
+          }
+        } else {
+          # Rehearsal against a test certificate, which no machine
+          # trusts. Assert only that a signature from the expected
+          # certificate is present; chain trust and the timestamp are
+          # checked by the branch above once the production certificate
+          # is in place.
+          Write-Output '::warning::verifying without requiring a trusted chain; this is a rehearsal, not a release gate'
+          foreach ($exe in $exes) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            if (-not $sig.SignerCertificate) { throw "no signature: $($exe.Name)" }
+            if ($env:THUMBPRINT -and $sig.SignerCertificate.Thumbprint -ne $env:THUMBPRINT) {
+              throw "unexpected signer $($sig.SignerCertificate.Thumbprint) on $($exe.Name)"
+            }
+          }
+          $signer = (Get-AuthenticodeSignature $exes[0].FullName).SignerCertificate
+          Write-Output "signer: $($signer.Subject) ($($signer.Thumbprint))"
+        }
+        Write-Output "verified $($exes.Count) signed binaries"
 
     - name: Warn that signing is skipped
       if: inputs.signpath-api-token == ''
