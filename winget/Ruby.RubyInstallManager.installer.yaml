@@ -7,9 +7,10 @@ Commands:
 MinimumOSVersion: 10.0.17763.0
 Installers:
 - Architecture: x64
-  # Placeholder: the repository is not public yet. Replace with the real
-  # GitHub Releases URL and the SHA256 of the released binary.
   InstallerUrl: https://github.com/ruby/rbmanager/releases/download/v0.1.0/rb-x64.exe
-  InstallerSha256: 096FB7A194C2CFD9F89BB71D6A99A9F786F885604579709B533EE781980E05CD
+  InstallerSha256: 77E67CE411984E0FBFB5D8DF1E7E39D24A24F4A53A92045B4619D10B563651B2
+- Architecture: arm64
+  InstallerUrl: https://github.com/ruby/rbmanager/releases/download/v0.1.0/rb-arm64.exe
+  InstallerSha256: E6516BB4E41CA32EA2D2ACBE0561CC53A24D25939EE933E96F0D7C0C6243553F
 ManifestType: installer
 ManifestVersion: 1.9.0
