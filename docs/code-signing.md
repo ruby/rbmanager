@@ -3,6 +3,9 @@
 This document is the code signing policy for rbmanager and the
 operating manual for the release signing pipeline.
 
+Signing is on hold for now, so releases ship unsigned through the
+draft path described below.
+
 ## What is signed, and why rb.exe first
 
 The only signed artifacts are the release builds of `rb.exe`
