@@ -55,7 +55,8 @@ URL skips the index and installs directly.
 
 On ARM64 Windows `install` takes the arm64 build of a version or tag
 and falls back to the x64 build, which runs under emulation, with a
-warning when there is none. A full package name such as
+warning when there is none. `use` makes the same choice among the
+installed rubies. A full package name such as
 `ruby-3.4.12-x64-mswin64_140` picks that build either way.
 
 `list --remote` prints what the index currently offers for this

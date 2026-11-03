@@ -32,7 +32,7 @@ Command surface and contracts:
 | `rb setup` | Copy own exe to `<root>\bin\rb.exe` (skip if already running from there, case-insensitive), append that dir to user PATH | 0 |
 | `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching build of the first platform the host runs (`arm64-mswin64_140` then `x64-mswin64_140` on ARM64, `x64-mswin64_140` elsewhere, see 4.15), warn on stderr when an ARM64 host falls back to x64, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
 | `rb list` | Installed names sorted, active one starred | 0 |
-| `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
+| `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), on ARM64 let an arm64 match hide the x64 ones and warn as install does when landing on x64, recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
 | `rb msvc [--vsver <year>] [--] <cmd...>` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation and apply it to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing. `enable` is the only reserved word after `msvc` | child / 1 |
 | `rb msvc enable [--vsver <year>] [shell]` | Same delta printed as per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. `--vsver` parses on either side of `enable`. No toolchain: actionable warning on stderr | 0 / 1 |
@@ -551,6 +551,24 @@ and `InstallFromIndexTests` Integration, `PublishE2eTests` Publish):
      any other build is never parsed.
 146. An `RBMANAGER_OS_ARCH` that names no `Architecture` member
      (`arm64ec`, `99`) stops with an error naming the variable.
+
+`rb use` (`ResolveTests` and `ProgramLifecycleTests`, Integration):
+
+134. `Resolve(preferNative: true)` on ARM64 lets an arm64 match hide the
+     x64 ones, including a newer x64 version.
+135. With no arm64 match it resolves the x64 ones as before.
+136. A full x64 name still resolves to that build.
+137. Two arm64 versions stay ambiguous, since the preference only orders
+     platforms.
+138. On an x64 host, and without `preferNative` (what `uninstall` uses),
+     an arm64 and an x64 build of one version stay ambiguous.
+139. `rb use` on ARM64 warns as install does only when it lands on x64 by
+     fallback, not for an arm64 match or a full x64 name.
+147. When the matches span both platforms, the version the query spells
+     out beats the platform order: `3.4.1` picks an x64 3.4.1 over an
+     arm64 3.4.12.
+148. Within one platform an exact version stays as ambiguous as before,
+     on x64 and ARM64 hosts alike.
 
 ## 5. Execution plan
 

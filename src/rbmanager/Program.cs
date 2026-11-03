@@ -210,8 +210,10 @@ internal static class Program
 
     internal static int Use(string query)
     {
-        SwitchTo(Resolve(query));
+        string name = Resolve(query, preferNative: true);
+        SwitchTo(name);
         Console.WriteLine($"Now using {CurrentTarget()}");
+        WarnIfEmulated(query, name);
         VcRedist.WarnIfMissing();
         return 0;
     }
@@ -279,12 +281,13 @@ internal static class Program
     private static IEnumerable<string> InstalledRubies() =>
         Directory.Exists(Rubies) ? Directory.EnumerateDirectories(Rubies).Order() : [];
 
-    internal static string Resolve(string query)
+    internal static string Resolve(string query, bool preferNative = false)
     {
         string[] matches = InstalledRubies()
             .Select(Path.GetFileName)
             .Where(n => n == query || n!.Contains(query, StringComparison.OrdinalIgnoreCase))
             .ToArray()!;
+        if (preferNative) matches = FirstPlatformOnly(query, matches);
         return matches switch
         {
             [var single] => single!,
@@ -292,6 +295,27 @@ internal static class Program
             _ => HighestRevision(matches!) ?? throw new InvalidOperationException(
                 $"'{query}' is ambiguous: {string.Join(", ", matches)}"),
         };
+    }
+
+    // The installed counterpart of BinaryIndex.Pick's platform order: the
+    // first of BinaryIndex.Platforms with a match hides the matches on the
+    // others. Names on none of them stay, so they remain as ambiguous as
+    // before. Across platforms the version the query spells out comes
+    // first, or "3.4.1" would land on an arm64 3.4.12 instead of an x64
+    // 3.4.1.
+    private static string[] FirstPlatformOnly(string query, string[] matches)
+    {
+        string[] platforms = BinaryIndex.Platforms;
+        string[] exact = matches
+            .Where(n => PackageName.Match(n) is { Success: true } m &&
+                m.Groups["ver"].Value.Equals(query, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (exact.Length > 0 && platforms.Count(p => matches.Any(n => BinaryIndex.IsOn(n, p))) > 1)
+            matches = exact;
+        string? first = platforms.FirstOrDefault(p => matches.Any(n => BinaryIndex.IsOn(n, p)));
+        return matches
+            .Where(n => !platforms.Any(p => p != first && BinaryIndex.IsOn(n, p)))
+            .ToArray();
     }
 
     // ruby-<version>[-<n>]-<platform>: a reissued release package
