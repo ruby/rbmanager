@@ -30,7 +30,7 @@ Command surface and contracts:
 | Command | Behavior | Exit |
 |---|---|---|
 | `rb setup` | Copy own exe to `<root>\bin\rb.exe` (skip if already running from there, case-insensitive), append that dir to user PATH | 0 |
-| `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching `x64-mswin64_140` build, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
+| `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching build of the first platform the host runs (`arm64-mswin64_140` then `x64-mswin64_140` on ARM64, `x64-mswin64_140` elsewhere, see 4.15), warn on stderr when an ARM64 host falls back to x64, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
 | `rb list` | Installed names sorted, active one starred | 0 |
 | `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
@@ -505,8 +505,8 @@ Unit (`BinaryIndexTests`):
 
 Integration (`ListRemoteTests`, Serial):
 
-121. Name, channel and the `install` tags, newest first, in aligned
-     columns.
+121. Name, channel, platform and the `install` tags, newest first, in
+     aligned columns.
 122. An index with nothing for this platform → empty stdout, a note on
      stderr, exit 0.
 123. `schema: 2` fails here as it does on install.
@@ -515,6 +515,42 @@ E2E (`CliE2eTests`):
 
 124. `--remote` is the only flag `list` takes, and it takes no
      argument; anything else is usage and exit 2.
+
+### 4.15 ARM64 hosts
+
+The index carries `arm64-mswin64_140` builds next to the x64 ones, with
+tags assigned per platform. An ARM64 host prefers its own platform and
+falls back to x64, which runs there under emulation. Any other host sees
+only x64, as before. The host comes from
+`RuntimeInformation.OSArchitecture`, which reports the machine even to an
+emulated x64 process. `RBMANAGER_OS_ARCH` (an `Architecture` name)
+overrides it, and `RbSandbox`/`E2eSandbox` pin it to `X64` so the other
+suites stay host-independent.
+
+Install and `list --remote` (`BinaryIndexTests` Unit, `ListRemoteTests`
+and `InstallFromIndexTests` Integration, `PublishE2eTests` Publish):
+
+125. `PlatformsFor(Arm64)` is arm64 then x64. X64 and X86 get x64 only.
+126. On ARM64 a tag picks the arm64 build even when an x64 build of the
+     same tag is newer. An x64 host picks the x64 one.
+127. A tag with no arm64 build falls back to x64.
+128. A full x64 package name picks that build on ARM64.
+129. `Available` on ARM64 lists the arm64 builds first, each platform
+     newest first.
+130. `rb list --remote` on ARM64 lists the arm64 builds above the x64
+     ones, with the platform column.
+131. `rb install <tag>` installs the older arm64 snapshot on ARM64 and the
+     x64 one on x64, without a warning.
+132. No arm64 build for the tag on ARM64 → the x64 build installs and
+     stderr carries `warning: no arm64-mswin64_140 build matches '<q>',
+     falling back to x64-mswin64_140 under emulation`.
+133. A full x64 name on ARM64 installs that build without the warning.
+144. The win-x64 AOT exe lists the arm64 builds exactly when the machine
+     is ARM64, so emulation does not hide the host.
+145. `Pick` ranks only the builds that match the query, so the version of
+     any other build is never parsed.
+146. An `RBMANAGER_OS_ARCH` that names no `Architecture` member
+     (`arm64ec`, `99`) stops with an error naming the variable.
 
 ## 5. Execution plan
 

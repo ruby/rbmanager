@@ -13,7 +13,7 @@ public class ListRemoteTests
     private const string Rel = "ruby-4.0.5-x64-mswin64_140";
 
     private static string BuildJson(string name, string version, string channel,
-        string[] tags, string platform = BinaryIndex.Platform, string? commitDate = null) => $$"""
+        string[] tags, string platform = BinaryIndex.X64, string? commitDate = null) => $$"""
         {
           "name": "{{name}}",
           "version": "{{version}}",
@@ -41,7 +41,7 @@ public class ListRemoteTests
         env.Set("RBMANAGER_INDEX_URL", path);
     }
 
-    [Fact] // case 121: name, channel and the tags `install` accepts
+    [Fact] // case 121: name, channel, platform and the tags `install` accepts
     public async Task ListsBuildsNewestFirstInColumns()
     {
         using var sb = new RbSandbox();
@@ -57,10 +57,49 @@ public class ListRemoteTests
         Assert.Equal(0, rc);
         Assert.Equal(
             [
-                $"{Dev}  dev      ruby-dev, 4.1-dev",
-                $"{Rel}                         release  4.0.5, 4.0, 4",
+                $"{Dev}  dev      x64-mswin64_140  ruby-dev, 4.1-dev",
+                $"{Rel}                         release  x64-mswin64_140  4.0.5, 4.0, 4",
             ],
             cap.OutLines);
+    }
+
+    [Fact] // case 130: an arm64 host lists its own builds first, then x64
+    public async Task Arm64Host_ListsArm64ThenX64()
+    {
+        using var sb = new RbSandbox();
+        using var cap = new ConsoleCapture();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_OS_ARCH", "Arm64");
+        WriteIndex(sb, env,
+            BuildJson("ruby-4.0.10-x64-mswin64_140", "4.0.10", "release", ["4.0.10", "4.0"]),
+            BuildJson("ruby-4.0.9-arm64-mswin64_140", "4.0.9", "release", ["4.0.9", "4.0"],
+                platform: BinaryIndex.Arm64));
+
+        int rc = await Program.ListRemote();
+
+        Assert.Equal(0, rc);
+        Assert.Equal(
+            [
+                "ruby-4.0.9-arm64-mswin64_140  release  arm64-mswin64_140  4.0.9, 4.0",
+                "ruby-4.0.10-x64-mswin64_140   release  x64-mswin64_140    4.0.10, 4.0",
+            ],
+            cap.OutLines);
+    }
+
+    [Theory] // case 146: an override naming no Architecture stops and names the variable
+    [InlineData("arm64ec")]
+    [InlineData("99")]
+    public async Task UnknownOsArchOverride_Throws(string arch)
+    {
+        using var sb = new RbSandbox();
+        using var env = new EnvScope();
+        WriteIndex(sb, env, BuildJson(Rel, "4.0.5", "release", ["4.0.5"]));
+        env.Set("RBMANAGER_OS_ARCH", arch);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(Program.ListRemote);
+
+        Assert.Contains("RBMANAGER_OS_ARCH", ex.Message);
+        Assert.Contains($"'{arch}'", ex.Message);
     }
 
     [Fact] // case 122: an index with nothing for this platform is not an error
@@ -77,7 +116,7 @@ public class ListRemoteTests
 
         Assert.Equal(0, rc);
         Assert.Equal("", cap.Out);
-        Assert.Contains($"no {BinaryIndex.Platform} builds", cap.Err);
+        Assert.Contains($"no {BinaryIndex.X64} builds", cap.Err);
     }
 
     [Fact] // case 123: an index this rb does not understand fails here too

@@ -53,8 +53,14 @@ verified against the sha256 recorded in the index. An unsigned build
 (all dev snapshots are unsigned) installs with a warning. A zip path or
 URL skips the index and installs directly.
 
+On ARM64 Windows `install` takes the arm64 build of a version or tag
+and falls back to the x64 build, which runs under emulation, with a
+warning when there is none. A full package name such as
+`ruby-3.4.12-x64-mswin64_140` picks that build either way.
+
 `list --remote` prints what the index currently offers for this
-platform, newest first: the package name, the channel, and the tags
+machine, newest first, with the arm64 builds above the x64 ones on
+ARM64: the package name, the channel, the platform, and the tags
 `install` accepts for it. It is the counterpart of `list`, which shows
 what is installed, and it exists so that nothing outside rbmanager has
 to fetch and interpret the feed.

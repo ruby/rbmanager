@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,7 +11,32 @@ namespace RbManager;
 // parsing `version`, whose syntax depends on the channel.
 internal static class BinaryIndex
 {
-    internal const string Platform = "x64-mswin64_140";
+    internal const string X64 = "x64-mswin64_140";
+    internal const string Arm64 = "arm64-mswin64_140";
+
+    // The platforms this machine runs, native first. ARM64 Windows runs
+    // x64 binaries under emulation, so x64 builds back up arm64 there.
+    internal static string[] Platforms => PlatformsFor(HostArchitecture());
+
+    internal static string[] PlatformsFor(Architecture host) =>
+        host == Architecture.Arm64 ? [Arm64, X64] : [X64];
+
+    // OSArchitecture reports the machine rather than the process, so
+    // rb-x64.exe under emulation still sees Arm64. RBMANAGER_OS_ARCH
+    // stands in for it in tests.
+    private static Architecture HostArchitecture()
+    {
+        if (Environment.GetEnvironmentVariable("RBMANAGER_OS_ARCH") is not { Length: > 0 } arch)
+            return RuntimeInformation.OSArchitecture;
+        string name = Enum.GetNames<Architecture>()
+            .FirstOrDefault(n => n.Equals(arch, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException(
+                $"RBMANAGER_OS_ARCH must name an Architecture such as X64 or Arm64, not '{arch}'");
+        return Enum.Parse<Architecture>(name);
+    }
+
+    internal static bool IsOn(string name, string platform) =>
+        name.EndsWith($"-{platform}", StringComparison.OrdinalIgnoreCase);
 
     private const string DefaultUrl =
         "https://cache.ruby-lang.org/pub/ruby/binaries/index.json";
@@ -23,10 +49,10 @@ internal static class BinaryIndex
             : DefaultUrl;
 
     public static async Task<Build> Resolve(string query) =>
-        Pick(await FetchAll(), query) ?? throw new InvalidOperationException(
+        Pick(await FetchAll(), query, Platforms) ?? throw new InvalidOperationException(
             $"no binary package matches '{query}' in the index");
 
-    public static async Task<Build[]> Available() => Available(await FetchAll());
+    public static async Task<Build[]> Available() => Available(await FetchAll(), Platforms);
 
     private static async Task<List<Build>> FetchAll()
     {
@@ -62,20 +88,27 @@ internal static class BinaryIndex
         return page;
     }
 
-    // The newest match wins regardless of feed order: series tags like
+    // The first of `platforms` with a match wins, even over a newer build
+    // of a later one, because the feed assigns tags per platform. Within
+    // it the newest match wins regardless of feed order: series tags like
     // "4.0" sit on every 4.0.x release, and dev tags like "4.1-dev" on
-    // every snapshot of the series.
-    internal static Build? Pick(IEnumerable<Build> builds, string query) =>
-        builds
-            .Where(b => b.Platform == Platform)
-            .Where(b => b.Tags.Contains(query, StringComparer.OrdinalIgnoreCase) ||
-                string.Equals(b.Name, query, StringComparison.OrdinalIgnoreCase))
-            .MaxBy(Rank);
+    // every snapshot of the series. A full package name matches only its
+    // own build, so it is taken whatever its platform.
+    internal static Build? Pick(IEnumerable<Build> builds, string query, string[] platforms) =>
+        Ordered(builds.Where(b => b.Tags.Contains(query, StringComparer.OrdinalIgnoreCase) ||
+                string.Equals(b.Name, query, StringComparison.OrdinalIgnoreCase)), platforms)
+            .FirstOrDefault();
 
-    // Everything installable here, newest first. Same order Pick resolves
-    // in, so a tag always installs the topmost line carrying it.
-    internal static Build[] Available(IEnumerable<Build> builds) =>
-        builds.Where(b => b.Platform == Platform).OrderByDescending(Rank).ToArray();
+    // Everything installable here, in the order Pick resolves, so a tag
+    // always installs the topmost line carrying it.
+    internal static Build[] Available(IEnumerable<Build> builds, string[] platforms) =>
+        Ordered(builds, platforms).ToArray();
+
+    private static IEnumerable<Build> Ordered(IEnumerable<Build> builds, string[] platforms) =>
+        builds
+            .Where(b => platforms.Contains(b.Platform))
+            .OrderBy(b => Array.IndexOf(platforms, b.Platform))
+            .ThenByDescending(Rank);
 
     // Version, then reissue revision (SIGNING.md in ruby/actions), then
     // commit date, which keeps this consistent with Program.Resolve's

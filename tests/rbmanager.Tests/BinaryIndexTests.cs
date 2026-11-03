@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace RbManager.Tests;
 
 // Plan 4.13: BinaryIndex.Parse and BinaryIndex.Pick — pure logic against
@@ -5,8 +7,11 @@ namespace RbManager.Tests;
 [Trait("Category", "Unit")]
 public class BinaryIndexTests
 {
+    private static readonly string[] X64Host = BinaryIndex.PlatformsFor(Architecture.X64);
+    private static readonly string[] Arm64Host = BinaryIndex.PlatformsFor(Architecture.Arm64);
+
     private static Build Make(string name, string version, string channel = "release",
-        int? revision = 0, string[]? tags = null, string platform = BinaryIndex.Platform,
+        int? revision = 0, string[]? tags = null, string platform = BinaryIndex.X64,
         string? commit = null, string? commitDate = null, string? publishedAt = null) => new()
     {
         Name = name,
@@ -60,7 +65,7 @@ public class BinaryIndexTests
         Assert.Equal("dev", b.Channel);
         Assert.Null(b.Revision);
         Assert.Contains("ruby-dev", b.Tags);
-        Assert.Equal(BinaryIndex.Platform, b.Platform);
+        Assert.Equal(BinaryIndex.X64, b.Platform);
         Assert.Equal("313063a97245ec48f125180346f589b43403ea8dc1afe98de0309f7e2baefd6b", b.Sha256);
         Assert.Equal(29021956, b.Size);
         Assert.Equal("2026-08-21", b.CommitDate);
@@ -87,9 +92,9 @@ public class BinaryIndexTests
             Make("ruby-4.0.5-x64-mswin64_140", "4.0.5", tags: ["4.0.5", "4.0", "4"]),
         ];
 
-        Assert.Equal("ruby-4.0.5-x64-mswin64_140", BinaryIndex.Pick(builds, "4.0")!.Name);
+        Assert.Equal("ruby-4.0.5-x64-mswin64_140", BinaryIndex.Pick(builds, "4.0", X64Host)!.Name);
         Assert.Equal("ruby-4.0.5-x64-mswin64_140",
-            BinaryIndex.Pick(builds.Reverse(), "4")!.Name);
+            BinaryIndex.Pick(builds.Reverse(), "4", X64Host)!.Name);
     }
 
     [Fact] // case 102: a reissue supersedes by revision, not by feed order
@@ -102,9 +107,10 @@ public class BinaryIndexTests
                 tags: ["4.0.5-1", "4.0.5", "4.0", "4"]),
         ];
 
-        Assert.Equal("ruby-4.0.5-1-x64-mswin64_140", BinaryIndex.Pick(builds, "4.0.5")!.Name);
         Assert.Equal("ruby-4.0.5-1-x64-mswin64_140",
-            BinaryIndex.Pick(builds.Reverse(), "4.0.5")!.Name);
+            BinaryIndex.Pick(builds, "4.0.5", X64Host)!.Name);
+        Assert.Equal("ruby-4.0.5-1-x64-mswin64_140",
+            BinaryIndex.Pick(builds.Reverse(), "4.0.5", X64Host)!.Name);
     }
 
     [Fact] // case 103: a superseded revision stays reachable by its exact tag
@@ -117,7 +123,8 @@ public class BinaryIndexTests
                 tags: ["4.0.5-1", "4.0.5", "4.0", "4"]),
         ];
 
-        Assert.Equal("ruby-4.0.5-x64-mswin64_140", BinaryIndex.Pick(builds, "4.0.5-0")!.Name);
+        Assert.Equal("ruby-4.0.5-x64-mswin64_140",
+            BinaryIndex.Pick(builds, "4.0.5-0", X64Host)!.Name);
     }
 
     [Fact] // case 104: equal dev versions fall back to the commit date
@@ -134,9 +141,9 @@ public class BinaryIndexTests
         ];
 
         Assert.Equal("ruby-4.1.0dev-20260821-e4462a9514-x64-mswin64_140",
-            BinaryIndex.Pick(builds, "ruby-dev")!.Name);
+            BinaryIndex.Pick(builds, "ruby-dev", X64Host)!.Name);
         Assert.Equal("ruby-4.1.0dev-20260821-e4462a9514-x64-mswin64_140",
-            BinaryIndex.Pick(builds.Reverse(), "4.1-dev")!.Name);
+            BinaryIndex.Pick(builds.Reverse(), "4.1-dev", X64Host)!.Name);
     }
 
     [Fact] // case 105: other platforms never resolve, even on a tag match
@@ -146,8 +153,8 @@ public class BinaryIndexTests
             tags: ["4.0.5", "4.0", "4"], platform: "arm64-mswin64_140");
         Build x64 = Make("ruby-4.0.5-x64-mswin64_140", "4.0.5", tags: ["4.0.5", "4.0", "4"]);
 
-        Assert.Null(BinaryIndex.Pick([arm], "4.0.5"));
-        Assert.Equal(x64.Name, BinaryIndex.Pick([arm, x64], "4.0.5")!.Name);
+        Assert.Null(BinaryIndex.Pick([arm], "4.0.5", X64Host));
+        Assert.Equal(x64.Name, BinaryIndex.Pick([arm, x64], "4.0.5", X64Host)!.Name);
     }
 
     [Fact] // case 106: the full package name resolves alongside the tags
@@ -155,8 +162,73 @@ public class BinaryIndexTests
     {
         Build b = Make("ruby-4.0.5-x64-mswin64_140", "4.0.5", tags: ["4.0.5", "4.0", "4"]);
 
-        Assert.Equal(b.Name, BinaryIndex.Pick([b], "ruby-4.0.5-x64-mswin64_140")!.Name);
-        Assert.Equal(b.Name, BinaryIndex.Pick([b], "RUBY-4.0.5-X64-MSWIN64_140")!.Name);
+        Assert.Equal(b.Name, BinaryIndex.Pick([b], "ruby-4.0.5-x64-mswin64_140", X64Host)!.Name);
+        Assert.Equal(b.Name, BinaryIndex.Pick([b], "RUBY-4.0.5-X64-MSWIN64_140", X64Host)!.Name);
+    }
+
+    [Fact] // case 125: arm64 hosts add x64 after their own platform
+    public void PlatformsFor_Arm64PrefersItsOwnThenX64()
+    {
+        Assert.Equal([BinaryIndex.Arm64, BinaryIndex.X64], Arm64Host);
+        Assert.Equal([BinaryIndex.X64], X64Host);
+        Assert.Equal([BinaryIndex.X64], BinaryIndex.PlatformsFor(Architecture.X86));
+    }
+
+    // 3.4 has an arm64 build and a newer x64 one, 3.3 is x64 only.
+    private static readonly Build[] Mixed =
+    [
+        Make("ruby-3.4.13-x64-mswin64_140", "3.4.13", tags: ["3.4.13", "3.4", "3"]),
+        Make("ruby-3.4.12-arm64-mswin64_140", "3.4.12", tags: ["3.4.12", "3.4", "3"],
+            platform: BinaryIndex.Arm64),
+        Make("ruby-3.3.11-x64-mswin64_140", "3.3.11", tags: ["3.3.11", "3.3", "3"]),
+    ];
+
+    [Fact] // case 126: tags are per platform, so arm64 wins over a newer x64
+    public void Pick_Arm64Host_PrefersArm64OverNewerX64()
+    {
+        Assert.Equal("ruby-3.4.12-arm64-mswin64_140",
+            BinaryIndex.Pick(Mixed, "3.4", Arm64Host)!.Name);
+        Assert.Equal("ruby-3.4.12-arm64-mswin64_140",
+            BinaryIndex.Pick(Mixed.Reverse(), "3", Arm64Host)!.Name);
+        Assert.Equal("ruby-3.4.13-x64-mswin64_140",
+            BinaryIndex.Pick(Mixed, "3.4", X64Host)!.Name);
+    }
+
+    [Fact] // case 127: a tag with no arm64 build falls back to x64
+    public void Pick_Arm64Host_FallsBackToX64()
+    {
+        Assert.Equal("ruby-3.3.11-x64-mswin64_140",
+            BinaryIndex.Pick(Mixed, "3.3", Arm64Host)!.Name);
+    }
+
+    [Fact] // case 128: a full package name bypasses the platform order
+    public void Pick_Arm64Host_FullX64NameIsTaken()
+    {
+        Assert.Equal("ruby-3.4.13-x64-mswin64_140",
+            BinaryIndex.Pick(Mixed, "ruby-3.4.13-x64-mswin64_140", Arm64Host)!.Name);
+    }
+
+    [Fact] // case 145: only the matches are ranked, so another build's version never is
+    public void Pick_RanksOnlyTheMatches()
+    {
+        Build[] builds = [.. Mixed, Make("ruby-head-x64-mswin64_140", "head", tags: ["head"])];
+
+        Assert.Equal("ruby-3.4.12-arm64-mswin64_140",
+            BinaryIndex.Pick(builds, "3.4", Arm64Host)!.Name);
+        Assert.Equal("ruby-3.3.11-x64-mswin64_140",
+            BinaryIndex.Pick(builds, "ruby-3.3.11-x64-mswin64_140", X64Host)!.Name);
+    }
+
+    [Fact] // case 129: arm64 lines first, each platform newest first
+    public void Available_Arm64Host_Arm64FirstThenX64()
+    {
+        Assert.Equal(
+            [
+                "ruby-3.4.12-arm64-mswin64_140",
+                "ruby-3.4.13-x64-mswin64_140",
+                "ruby-3.3.11-x64-mswin64_140",
+            ],
+            BinaryIndex.Available(Mixed, Arm64Host).Select(b => b.Name).ToArray());
     }
 
     [Fact] // case 119: the order `rb list --remote` prints, newest first
@@ -175,7 +247,7 @@ public class BinaryIndexTests
                 "ruby-4.0.5-x64-mswin64_140",
                 "ruby-4.0.4-x64-mswin64_140",
             ],
-            BinaryIndex.Available(builds).Select(b => b.Name).ToArray());
+            BinaryIndex.Available(builds, X64Host).Select(b => b.Name).ToArray());
     }
 
     [Fact] // case 120: builds this rb cannot install are not offered
@@ -187,7 +259,7 @@ public class BinaryIndexTests
             Make("ruby-4.0.5-x64-mswin64_140", "4.0.5"),
         ];
 
-        Build b = Assert.Single(BinaryIndex.Available(builds));
+        Build b = Assert.Single(BinaryIndex.Available(builds, X64Host));
         Assert.Equal("ruby-4.0.5-x64-mswin64_140", b.Name);
     }
 
@@ -196,7 +268,7 @@ public class BinaryIndexTests
     {
         Build b = Make("ruby-4.0.5-x64-mswin64_140", "4.0.5", tags: ["4.0.5", "4.0", "4"]);
 
-        Assert.Null(BinaryIndex.Pick([b], "3.9"));
+        Assert.Null(BinaryIndex.Pick([b], "3.9", X64Host));
     }
 
     [Fact] // case 108: a prerelease tag never shadows the release of a series
@@ -210,8 +282,8 @@ public class BinaryIndexTests
         ];
 
         Assert.Equal("ruby-4.1.0-rc1-x64-mswin64_140",
-            BinaryIndex.Pick(builds, "4.1.0-rc1")!.Name);
-        Assert.Null(BinaryIndex.Pick(builds, "4.1"));
+            BinaryIndex.Pick(builds, "4.1.0-rc1", X64Host)!.Name);
+        Assert.Null(BinaryIndex.Pick(builds, "4.1", X64Host));
     }
 }
 
@@ -231,9 +303,10 @@ public class BinaryIndexNetworkTests
             "https://cache.ruby-lang.org/pub/ruby/binaries/index.json");
 
         IndexPage page = BinaryIndex.Parse(json);
-        Build? build = BinaryIndex.Pick(page.Builds, "ruby-dev");
+        Build? build = BinaryIndex.Pick(page.Builds, "ruby-dev",
+            BinaryIndex.PlatformsFor(Architecture.X64));
         Assert.NotNull(build);
-        Assert.Equal(BinaryIndex.Platform, build!.Platform);
+        Assert.Equal(BinaryIndex.X64, build!.Platform);
         Assert.Matches("^[0-9a-f]{64}$", build.Sha256);
         Assert.StartsWith("https://cache.ruby-lang.org/", build.Url);
     }

@@ -106,6 +106,7 @@ internal static class Program
         {
             Build build = await BinaryIndex.Resolve(source);
             Console.WriteLine($"Resolved {source} to {build.Name}");
+            WarnIfEmulated(source, build.Name);
             if (!build.Signed)
                 Console.Error.WriteLine($"warning: {build.Name} is not code-signed");
             source = build.Url;
@@ -194,15 +195,16 @@ internal static class Program
         Build[] builds = await BinaryIndex.Available();
         if (builds.Length == 0)
         {
-            Console.Error.WriteLine(
-                $"rb: the binary index offers no {BinaryIndex.Platform} builds");
+            Console.Error.WriteLine("rb: the binary index offers no " +
+                $"{string.Join(" or ", BinaryIndex.Platforms)} builds");
             return 0;
         }
         int name = builds.Max(b => b.Name.Length);
         int channel = builds.Max(b => b.Channel.Length);
+        int platform = builds.Max(b => b.Platform.Length);
         foreach (Build b in builds)
             Console.WriteLine($"{b.Name.PadRight(name)}  {b.Channel.PadRight(channel)}  " +
-                string.Join(", ", b.Tags));
+                $"{b.Platform.PadRight(platform)}  " + string.Join(", ", b.Tags));
         return 0;
     }
 
@@ -212,6 +214,18 @@ internal static class Program
         Console.WriteLine($"Now using {CurrentTarget()}");
         VcRedist.WarnIfMissing();
         return 0;
+    }
+
+    // For a query that had nothing on this machine's own platform. A full
+    // package name asked for that very build, so it is not a fallback.
+    private static void WarnIfEmulated(string query, string name)
+    {
+        string[] platforms = BinaryIndex.Platforms;
+        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return;
+        if (platforms.Skip(1).FirstOrDefault(p => BinaryIndex.IsOn(name, p)) is { } fallback)
+            Console.Error.WriteLine(
+                $"warning: no {platforms[0]} build matches '{query}', " +
+                $"falling back to {fallback} under emulation");
     }
 
     internal static int Uninstall(string query)

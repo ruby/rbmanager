@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using RbManager.Tests.Support;
 
 namespace RbManager.Tests;
@@ -44,6 +45,38 @@ public class PublishE2eTests : IClassFixture<PublishFixture>
 
         Assert.Equal(0, r.ExitCode);
         Assert.Equal(Program.SelfVersion(), r.Out.Trim());
+    }
+
+    // The fixture publishes win-x64, so on an ARM64 machine this runs the
+    // exe under emulation, where OSArchitecture must still report Arm64.
+    [SkippableFact] // case 144
+    public void ListRemote_UnderAot_SeesTheMachineArchitecture()
+    {
+        Skip.If(_fx.ExePath is null, _fx.SkipReason);
+        using var sb = new E2eSandbox();
+        sb.UseHostArchitecture();
+        string index = Path.Combine(sb.Root, "_index", "index.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(index)!);
+        File.WriteAllText(index, $$"""
+            {"schema": 1, "next": null,
+             "builds": [{{Entry(BinaryIndex.Arm64)}}, {{Entry(BinaryIndex.X64)}}]}
+            """);
+        sb.UseIndex(index);
+
+        RbResult r = sb.RunExe(_fx.ExePath!, "list", "--remote");
+
+        Assert.Equal(0, r.ExitCode);
+        Assert.Contains($"ruby-4.0.9-{BinaryIndex.X64}", r.Out);
+        Assert.Equal(RuntimeInformation.OSArchitecture == Architecture.Arm64,
+            r.Out.Contains($"ruby-4.0.9-{BinaryIndex.Arm64}"));
+
+        static string Entry(string platform) => $$"""
+            {"name": "ruby-4.0.9-{{platform}}", "version": "4.0.9", "channel": "release",
+             "revision": 0, "tags": ["4.0.9"], "platform": "{{platform}}",
+             "url": "https://example.invalid/x.zip", "sha256": "{{new string('0', 64)}}",
+             "size": 1, "commit": null, "commit_date": null, "published_at": null,
+             "signed": false}
+            """;
     }
 
     [SkippableFact] // case 32: self-copy skip works on the self-contained exe
