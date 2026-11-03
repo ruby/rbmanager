@@ -145,7 +145,7 @@ internal static class Program
 
             Console.WriteLine($"Installed {name}");
             Console.WriteLine("Open a new terminal to pick up PATH changes.");
-            VcRedist.WarnIfMissing();
+            VcRedist.WarnIfMissing(name);
             return 0;
         }
         finally
@@ -214,7 +214,7 @@ internal static class Program
         SwitchTo(name);
         Console.WriteLine($"Now using {CurrentTarget()}");
         WarnIfEmulated(query, name);
-        VcRedist.WarnIfMissing();
+        VcRedist.WarnIfMissing(name);
         return 0;
     }
 

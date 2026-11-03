@@ -570,6 +570,23 @@ and `InstallFromIndexTests` Integration, `PublishE2eTests` Publish):
 148. Within one platform an exact version stays as ambiguous as before,
      on x64 and ARM64 hosts alike.
 
+VC++ runtime (`VcRedistTests`, Unit). `RBMANAGER_VC_REDIST_KEY` now
+stands in for the `Runtimes` key, with `x64` and `ARM64` subkeys under
+it.
+
+140. `RuntimeOf` maps arm64 package names and the platform to `ARM64`,
+     everything else to `x64`.
+141. `rb setup` on ARM64 is satisfied only when both runtimes are
+     registered.
+142. With only the x64 runtime on ARM64, setup names `ARM64` as missing
+     and offers the x64 package.
+143. `WarnIfMissing` checks an arm64 ruby against the ARM64 runtime and
+     an x64 ruby against the x64 one.
+149. On ARM64 a `vcruntime140.dll` in the system directory does not stand
+     in for an unregistered runtime: setup still names `ARM64` as missing.
+150. Nor does it for `IsInstalled` and `WarnIfMissing`, which warn for an
+     arm64 ruby. On x64 the DLL fallback is unchanged.
+
 ## 5. Execution plan
 
 Phased so each phase leaves the tree green.

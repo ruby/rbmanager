@@ -21,9 +21,7 @@ internal sealed class E2eSandbox : IDisposable
 
     public E2eSandbox()
     {
-        using var key = Registry.CurrentUser.CreateSubKey(_vcSub, writable: true);
-        key.SetValue("Installed", 1, RegistryValueKind.DWord);
-        key.SetValue("Version", "v14.99.0.0");
+        RbSandbox.SeedVcRedist(_vcSub);
         _extraEnv = new Dictionary<string, string>
         {
             ["RBMANAGER_VC_REDIST_KEY"] = _vcSub,
