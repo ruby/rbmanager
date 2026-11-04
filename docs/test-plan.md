@@ -30,9 +30,9 @@ Command surface and contracts:
 | Command | Behavior | Exit |
 |---|---|---|
 | `rb setup` | Copy own exe to `<root>\bin\rb.exe` (skip if already running from there, case-insensitive), append that dir to user PATH | 0 |
-| `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching `x64-mswin64_140` build, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
+| `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching build of the first platform the host runs (`arm64-mswin64_140` then `x64-mswin64_140` on ARM64, `x64-mswin64_140` elsewhere, see 4.15), warn on stderr when an ARM64 host falls back to x64, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
 | `rb list` | Installed names sorted, active one starred | 0 |
-| `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), recreate the `current` junction, ensure PATH | 0 / 1 |
+| `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), on ARM64 let an arm64 match hide the x64 ones and warn as install does when landing on x64, recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
 | `rb msvc [--vsver <year>] [--] <cmd...>` | Locate VsDevCmd via vswhere (narrowed to the requested VS product year, if any; `--vsver` > `RBMANAGER_VSVER` > newest), compute the env delta of activation and apply it to a `cmd /s /c` child (so `.cmd` shims resolve); removes `NoDefaultCurrentDirectoryInExePath`; propagates the child's exit code. Options are leading-only; `--` ends option parsing. `enable` is the only reserved word after `msvc` | child / 1 |
 | `rb msvc enable [--vsver <year>] [shell]` | Same delta printed as per-shell assignments plus an unset of `NoDefaultCurrentDirectoryInExePath`. Shell defaults to PowerShell; `cmd`/`bat` selects cmd syntax. `--vsver` parses on either side of `enable`. No toolchain: actionable warning on stderr | 0 / 1 |
@@ -505,8 +505,8 @@ Unit (`BinaryIndexTests`):
 
 Integration (`ListRemoteTests`, Serial):
 
-121. Name, channel and the `install` tags, newest first, in aligned
-     columns.
+121. Name, channel, platform and the `install` tags, newest first, in
+     aligned columns.
 122. An index with nothing for this platform → empty stdout, a note on
      stderr, exit 0.
 123. `schema: 2` fails here as it does on install.
@@ -515,6 +515,77 @@ E2E (`CliE2eTests`):
 
 124. `--remote` is the only flag `list` takes, and it takes no
      argument; anything else is usage and exit 2.
+
+### 4.15 ARM64 hosts
+
+The index carries `arm64-mswin64_140` builds next to the x64 ones, with
+tags assigned per platform. An ARM64 host prefers its own platform and
+falls back to x64, which runs there under emulation. Any other host sees
+only x64, as before. The host comes from
+`RuntimeInformation.OSArchitecture`, which reports the machine even to an
+emulated x64 process. `RBMANAGER_OS_ARCH` (an `Architecture` name)
+overrides it, and `RbSandbox`/`E2eSandbox` pin it to `X64` so the other
+suites stay host-independent.
+
+Install and `list --remote` (`BinaryIndexTests` Unit, `ListRemoteTests`
+and `InstallFromIndexTests` Integration, `PublishE2eTests` Publish):
+
+125. `PlatformsFor(Arm64)` is arm64 then x64. X64 and X86 get x64 only.
+126. On ARM64 a tag picks the arm64 build even when an x64 build of the
+     same tag is newer. An x64 host picks the x64 one.
+127. A tag with no arm64 build falls back to x64.
+128. A full x64 package name picks that build on ARM64.
+129. `Available` on ARM64 lists the arm64 builds first, each platform
+     newest first.
+130. `rb list --remote` on ARM64 lists the arm64 builds above the x64
+     ones, with the platform column.
+131. `rb install <tag>` installs the older arm64 snapshot on ARM64 and the
+     x64 one on x64, without a warning.
+132. No arm64 build for the tag on ARM64 → the x64 build installs and
+     stderr carries `warning: no arm64-mswin64_140 build matches '<q>',
+     falling back to x64-mswin64_140 under emulation`.
+133. A full x64 name on ARM64 installs that build without the warning.
+144. The win-x64 AOT exe lists the arm64 builds exactly when the machine
+     is ARM64, so emulation does not hide the host.
+145. `Pick` ranks only the builds that match the query, so the version of
+     any other build is never parsed.
+146. An `RBMANAGER_OS_ARCH` that names no `Architecture` member
+     (`arm64ec`, `99`) stops with an error naming the variable.
+
+`rb use` (`ResolveTests` and `ProgramLifecycleTests`, Integration):
+
+134. `Resolve(preferNative: true)` on ARM64 lets an arm64 match hide the
+     x64 ones, including a newer x64 version.
+135. With no arm64 match it resolves the x64 ones as before.
+136. A full x64 name still resolves to that build.
+137. Two arm64 versions stay ambiguous, since the preference only orders
+     platforms.
+138. On an x64 host, and without `preferNative` (what `uninstall` uses),
+     an arm64 and an x64 build of one version stay ambiguous.
+139. `rb use` on ARM64 warns as install does only when it lands on x64 by
+     fallback, not for an arm64 match or a full x64 name.
+147. When the matches span both platforms, the version the query spells
+     out beats the platform order: `3.4.1` picks an x64 3.4.1 over an
+     arm64 3.4.12.
+148. Within one platform an exact version stays as ambiguous as before,
+     on x64 and ARM64 hosts alike.
+
+VC++ runtime (`VcRedistTests`, Unit). `RBMANAGER_VC_REDIST_KEY` now
+stands in for the `Runtimes` key, with `x64` and `ARM64` subkeys under
+it.
+
+140. `RuntimeOf` maps arm64 package names and the platform to `ARM64`,
+     everything else to `x64`.
+141. `rb setup` on ARM64 is satisfied only when both runtimes are
+     registered.
+142. With only the x64 runtime on ARM64, setup names `ARM64` as missing
+     and offers the x64 package.
+143. `WarnIfMissing` checks an arm64 ruby against the ARM64 runtime and
+     an x64 ruby against the x64 one.
+149. On ARM64 a `vcruntime140.dll` in the system directory does not stand
+     in for an unregistered runtime: setup still names `ARM64` as missing.
+150. Nor does it for `IsInstalled` and `WarnIfMissing`, which warn for an
+     arm64 ruby. On x64 the DLL fallback is unchanged.
 
 ## 5. Execution plan
 

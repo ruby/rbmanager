@@ -6,8 +6,9 @@ namespace RbManager.Tests.Support;
 // wired to RBMANAGER_ROOT, plus a scratch HKCU subkey wired to
 // RBMANAGER_ENV_KEY so UserPath.Ensure never touches the real user PATH.
 // The VC++ Redistributable probe is redirected to a scratch subkey seeded
-// as "installed", so tests never depend on the host machine's real state.
-// Only safe inside the Serial collection (it mutates process env vars).
+// as "installed" for both runtimes, and the host is pinned to x64, so
+// tests never depend on the host machine's real state. Only safe inside
+// the Serial collection (it mutates process env vars).
 internal sealed class RbSandbox : IDisposable
 {
     private readonly TempDir _tmp = new("root");
@@ -23,15 +24,23 @@ internal sealed class RbSandbox : IDisposable
     {
         _regSub = $@"Software\rbmanager-tests\{Guid.NewGuid():N}";
         _vcSub = $@"Software\rbmanager-tests\{Guid.NewGuid():N}";
-        using (var key = Registry.CurrentUser.CreateSubKey(_vcSub, writable: true))
-        {
-            key.SetValue("Installed", 1, RegistryValueKind.DWord);
-            key.SetValue("Version", "v14.99.0.0");
-        }
+        SeedVcRedist(_vcSub);
         _env.Set("RBMANAGER_ROOT", Root);
         _env.Set("RBMANAGER_ENV_KEY", _regSub);
         _env.Set("RBMANAGER_VC_REDIST_KEY", _vcSub);
         _env.Set("RBMANAGER_VCRUNTIME", Path.Combine(Root, "no-vcruntime140.dll"));
+        _env.Set("RBMANAGER_OS_ARCH", "X64");
+    }
+
+    // The Runtimes key the x64 package leaves on ARM64 Windows.
+    internal static void SeedVcRedist(string sub)
+    {
+        foreach (string runtime in new[] { "x64", "ARM64" })
+        {
+            using var key = Registry.CurrentUser.CreateSubKey($@"{sub}\{runtime}", writable: true);
+            key.SetValue("Installed", 1, RegistryValueKind.DWord);
+            key.SetValue("Version", "v14.99.0.0");
+        }
     }
 
     // Creates rubies\<name> (with a bin subdir) without going through install.

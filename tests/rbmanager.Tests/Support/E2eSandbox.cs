@@ -6,8 +6,9 @@ namespace RbManager.Tests.Support;
 // does not touch the test process environment; the redirection is passed to
 // each child rb.exe invocation, so E2E tests run in parallel. The VC++
 // Redistributable probe is redirected to a scratch subkey seeded as
-// "installed" (and the DLL fallback to a nonexistent path), so children
-// never consult the host machine's real state.
+// "installed" (and the DLL fallback to a nonexistent path), and the host
+// is pinned to x64, so children never consult the host machine's real
+// state.
 internal sealed class E2eSandbox : IDisposable
 {
     private readonly TempDir _tmp = new("e2e");
@@ -20,15 +21,21 @@ internal sealed class E2eSandbox : IDisposable
 
     public E2eSandbox()
     {
-        using var key = Registry.CurrentUser.CreateSubKey(_vcSub, writable: true);
-        key.SetValue("Installed", 1, RegistryValueKind.DWord);
-        key.SetValue("Version", "v14.99.0.0");
+        RbSandbox.SeedVcRedist(_vcSub);
         _extraEnv = new Dictionary<string, string>
         {
             ["RBMANAGER_VC_REDIST_KEY"] = _vcSub,
             ["RBMANAGER_VCRUNTIME"] = Path.Combine(Root, "no-vcruntime140.dll"),
+            ["RBMANAGER_OS_ARCH"] = "X64",
         };
     }
+
+    // Blanks the x64 pin, so the child reads the real OSArchitecture.
+    // Dropping the key would pass on whatever the test process inherited.
+    public void UseHostArchitecture() => _extraEnv["RBMANAGER_OS_ARCH"] = "";
+
+    // Points the child at a binary index file.
+    public void UseIndex(string path) => _extraEnv["RBMANAGER_INDEX_URL"] = path;
 
     public RbResult Run(params string[] args) => RunExe(Rb.Exe, args);
     public RbResult RunExe(string exe, params string[] args) =>

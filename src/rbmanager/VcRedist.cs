@@ -16,20 +16,26 @@ namespace RbManager;
 // https://bugs.ruby-lang.org/issues/22180
 internal static partial class VcRedist
 {
-    private const string RuntimesSubKey =
-        @"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64";
+    private const string RuntimesKey = @"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes";
     // Microsoft's permalink to the latest 2015-2022 x64 redistributable.
+    // On ARM64 Windows it installs the ARM64 runtime alongside the x64 one.
     private const string InstallerUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
 
+    // The Runtimes subkey ("x64" or "ARM64") a ruby package or platform needs.
+    internal static string RuntimeOf(string rubyOrPlatform) =>
+        rubyOrPlatform.EndsWith(BinaryIndex.Arm64, StringComparison.OrdinalIgnoreCase)
+            ? "ARM64"
+            : "x64";
+
     // Registry probe, the documented way to detect the 2015-2022 runtime.
-    // RBMANAGER_VC_REDIST_KEY redirects it to an HKCU-relative scratch
-    // subkey so tests never depend on the host machine's real state.
-    internal static string? InstalledVersion()
+    // RBMANAGER_VC_REDIST_KEY redirects the Runtimes key to an HKCU-relative
+    // scratch subkey so tests never depend on the host machine's real state.
+    internal static string? InstalledVersion(string runtime)
     {
         if (Environment.GetEnvironmentVariable("RBMANAGER_VC_REDIST_KEY")
             is { Length: > 0 } sub)
         {
-            using var scratch = Registry.CurrentUser.OpenSubKey(sub);
+            using var scratch = Registry.CurrentUser.OpenSubKey($@"{sub}\{runtime}");
             return VersionOf(scratch);
         }
         // The redist setup is a 32-bit process; probe both views so a key
@@ -37,7 +43,7 @@ internal static partial class VcRedist
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
             using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-            using var key = hklm.OpenSubKey(RuntimesSubKey);
+            using var key = hklm.OpenSubKey($@"{RuntimesKey}\{runtime}");
             if (VersionOf(key) is { } version) return version;
         }
         return null;
@@ -61,23 +67,34 @@ internal static partial class VcRedist
         return File.Exists(dll);
     }
 
-    internal static bool IsInstalled() => InstalledVersion() is not null || RuntimeDllExists();
+    // On ARM64 the x64 and ARM64 runtimes share the one vcruntime140.dll
+    // path in the system directory, so finding it there does not say which
+    // of them is installed. Only the Runtimes keys can tell.
+    private static bool DllMayStandIn => BinaryIndex.Platforms is [_];
+
+    internal static bool IsInstalled(string runtime) =>
+        InstalledVersion(runtime) is not null || (DllMayStandIn && RuntimeDllExists());
 
     public static async Task<int> Ensure(bool assumeYes)
     {
-        if (InstalledVersion() is { } version)
+        // There is no ruby to ask yet, so cover every platform rb picks on
+        // this machine. On ARM64 that includes x64 for the fallback builds.
+        string[] runtimes = BinaryIndex.Platforms.Select(RuntimeOf).ToArray();
+        string?[] versions = runtimes.Select(InstalledVersion).ToArray();
+        if (versions.All(v => v is not null))
         {
-            Console.WriteLine($"VC++ Redistributable {version} is already installed.");
+            Console.WriteLine($"VC++ Redistributable {versions[^1]} is already installed.");
             return 0;
         }
-        if (RuntimeDllExists())
+        if (DllMayStandIn && RuntimeDllExists())
         {
             Console.WriteLine("vcruntime140.dll is already present in the system directory.");
             return 0;
         }
 
+        string missing = string.Join(", ", runtimes.Where((_, i) => versions[i] is null));
         Console.WriteLine($"""
-            The Microsoft Visual C++ Redistributable (x64) is not installed.
+            The Microsoft Visual C++ Redistributable ({missing}) is not installed.
             Ruby's official Windows packages rely on it; without vcruntime140.dll
             ruby.exe cannot start. Installing it affects the whole machine and
             prompts for administrator approval (UAC). Without administrator
@@ -93,21 +110,22 @@ internal static partial class VcRedist
                 return 1;
             }
         }
-        return await Install();
+        return await Install(runtimes);
     }
 
     // Non-blocking companion for install/use: the selected ruby stays in
     // place, it just cannot start until the runtime shows up.
-    public static void WarnIfMissing()
+    public static void WarnIfMissing(string ruby)
     {
-        if (IsInstalled()) return;
-        Console.Error.WriteLine("""
-            rb: warning: the Microsoft Visual C++ Redistributable (x64) was not found.
+        string runtime = RuntimeOf(ruby);
+        if (IsInstalled(runtime)) return;
+        Console.Error.WriteLine($"""
+            rb: warning: the Microsoft Visual C++ Redistributable ({runtime}) was not found.
             ruby.exe cannot start without vcruntime140.dll. Run `rb setup` to install it.
             """);
     }
 
-    private static async Task<int> Install()
+    private static async Task<int> Install(string[] runtimes)
     {
         string installer = Path.Combine(Path.GetTempPath(), "vc_redist.x64.exe");
         Console.WriteLine($"Downloading {InstallerUrl} ...");
@@ -148,7 +166,15 @@ internal static partial class VcRedist
                         $"rb: vc_redist.x64.exe failed with exit code {code}");
                     return 1;
             }
-            Console.WriteLine(InstalledVersion() is { } installed
+            if (!DllMayStandIn &&
+                runtimes.Where(r => InstalledVersion(r) is null).ToArray() is { Length: > 0 } missing)
+            {
+                Console.Error.WriteLine(
+                    $"rb: the VC++ Redistributable ({string.Join(", ", missing)}) " +
+                    "is still not registered after vc_redist.x64.exe");
+                return 1;
+            }
+            Console.WriteLine(InstalledVersion("x64") is { } installed
                 ? $"Installed VC++ Redistributable {installed}."
                 : "Installed the VC++ Redistributable.");
             return 0;

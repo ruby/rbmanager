@@ -16,19 +16,20 @@ public class InstallFromIndexTests
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
     // One dev-channel entry in the published feed's exact shape.
-    private static string BuildJson(string name, string url, string sha256, bool signed) => $$"""
+    private static string BuildJson(string name, string url, string sha256, bool signed,
+        string platform = BinaryIndex.X64, string commitDate = "2026-08-21") => $$"""
         {
           "name": "{{name}}",
           "version": "4.1.0dev",
           "channel": "dev",
           "revision": null,
           "tags": ["4.1-dev", "4.1-dev-20260821", "4.1.0dev-20260821-0123456789", "ruby-dev"],
-          "platform": "x64-mswin64_140",
+          "platform": "{{platform}}",
           "url": "{{url}}",
           "sha256": "{{sha256}}",
           "size": 1,
           "commit": "0123456789",
-          "commit_date": "2026-08-21",
+          "commit_date": "{{commitDate}}",
           "published_at": "2026-08-21",
           "signed": {{(signed ? "true" : "false")}}
         }
@@ -171,6 +172,81 @@ public class InstallFromIndexTests
             () => Program.Install("3.9"));
 
         Assert.Equal("no binary package matches '3.9' in the index", ex.Message);
+    }
+
+    // An older arm64 snapshot next to the x64 one: the arm64 host takes its
+    // own, an x64 host never sees it.
+    private const string ArmDevName = "ruby-4.1.0dev-20260820-0123456789-arm64-mswin64_140";
+
+    [Theory] // case 131
+    [InlineData("Arm64", ArmDevName)]
+    [InlineData("X64", DevName)]
+    public async Task InstallByTag_PicksTheHostsOwnPlatform(string arch, string expected)
+    {
+        using var sb = new RbSandbox();
+        using var cap = new ConsoleCapture();
+        byte[] zip = File.ReadAllBytes(
+            Zips.WriteRuby(Path.Combine(sb.Root, "_src", "pkg.zip"), expected));
+        using var server = new LoopbackZipServer(zip, $"/{expected}.zip");
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_OS_ARCH", arch);
+        string UrlOf(string name) =>
+            name == expected ? server.ZipUrl : "https://example.invalid/x.zip";
+        env.Set("RBMANAGER_INDEX_URL", WriteIndex(sb, "index.json", null,
+            BuildJson(DevName, UrlOf(DevName), Sha256Of(zip), signed: true),
+            BuildJson(ArmDevName, UrlOf(ArmDevName), Sha256Of(zip), signed: true,
+                platform: BinaryIndex.Arm64, commitDate: "2026-08-20")));
+
+        int rc = await Program.Install("4.1-dev");
+
+        Assert.Equal(0, rc);
+        Assert.Equal(expected, Program.CurrentTarget());
+        Assert.Equal("", cap.Err);
+    }
+
+    [Fact] // case 132: no arm64 build for the tag installs x64 with a warning
+    public async Task InstallByTag_Arm64HostWithoutArm64Build_FallsBackAndWarns()
+    {
+        using var sb = new RbSandbox();
+        using var cap = new ConsoleCapture();
+        byte[] zip = File.ReadAllBytes(
+            Zips.WriteRuby(Path.Combine(sb.Root, "_src", "pkg.zip"), DevName));
+        using var server = new LoopbackZipServer(zip, $"/{DevName}.zip");
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_OS_ARCH", "Arm64");
+        env.Set("RBMANAGER_INDEX_URL", WriteIndex(sb, "index.json", null,
+            BuildJson(DevName, server.ZipUrl, Sha256Of(zip), signed: true)));
+
+        int rc = await Program.Install("4.1-dev");
+
+        Assert.Equal(0, rc);
+        Assert.Equal(DevName, Program.CurrentTarget());
+        Assert.Equal(
+            "warning: no arm64-mswin64_140 build matches '4.1-dev', " +
+            "falling back to x64-mswin64_140 under emulation",
+            cap.Err.TrimEnd());
+    }
+
+    [Fact] // case 133: a full x64 name is taken as asked, without the warning
+    public async Task InstallByFullName_Arm64Host_TakesX64Silently()
+    {
+        using var sb = new RbSandbox();
+        using var cap = new ConsoleCapture();
+        byte[] zip = File.ReadAllBytes(
+            Zips.WriteRuby(Path.Combine(sb.Root, "_src", "pkg.zip"), DevName));
+        using var server = new LoopbackZipServer(zip, $"/{DevName}.zip");
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_OS_ARCH", "Arm64");
+        env.Set("RBMANAGER_INDEX_URL", WriteIndex(sb, "index.json", null,
+            BuildJson(DevName, server.ZipUrl, Sha256Of(zip), signed: true),
+            BuildJson(ArmDevName, "https://example.invalid/x.zip", new string('0', 64),
+                signed: true, platform: BinaryIndex.Arm64)));
+
+        int rc = await Program.Install(DevName);
+
+        Assert.Equal(0, rc);
+        Assert.Equal(DevName, Program.CurrentTarget());
+        Assert.Equal("", cap.Err);
     }
 
     [Fact] // case 117: a missing zip path fails as a file, not as a version

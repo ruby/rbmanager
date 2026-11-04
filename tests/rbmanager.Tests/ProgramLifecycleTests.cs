@@ -207,6 +207,28 @@ public class ProgramLifecycleTests
         Assert.Equal(V405, Program.CurrentTarget());
     }
 
+    [Theory] // case 139: use warns as install does when it lands on x64
+    [InlineData("3.3", "ruby-3.3.11-x64-mswin64_140", true)]
+    [InlineData("3.4", "ruby-3.4.12-arm64-mswin64_140", false)]
+    [InlineData("ruby-3.4.12-x64-mswin64_140", "ruby-3.4.12-x64-mswin64_140", false)]
+    public void Use_Arm64Host_WarnsOnlyOnFallback(string query, string expected, bool warns)
+    {
+        using var sb = new RbSandbox();
+        using var cap = new ConsoleCapture();
+        using var env = new EnvScope();
+        env.Set("RBMANAGER_OS_ARCH", "Arm64");
+        sb.Seed("ruby-3.4.12-arm64-mswin64_140", "ruby-3.4.12-x64-mswin64_140",
+            "ruby-3.3.11-x64-mswin64_140");
+
+        Assert.Equal(0, Program.Use(query));
+
+        Assert.Equal(expected, Program.CurrentTarget());
+        Assert.Equal(warns
+            ? $"warning: no arm64-mswin64_140 build matches '{query}', " +
+              "falling back to x64-mswin64_140 under emulation"
+            : "", cap.Err.TrimEnd());
+    }
+
     [Fact] // case 27
     public void Uninstall_NonActive_RemovesDir_KeepsCurrent()
     {

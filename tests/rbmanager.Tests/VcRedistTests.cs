@@ -5,21 +5,34 @@ namespace RbManager.Tests;
 
 // VC++ Redistributable detection and the rb setup consent flow. Registry
 // state is simulated through RBMANAGER_VC_REDIST_KEY (an HKCU scratch
-// subkey) and the DLL fallback through RBMANAGER_VCRUNTIME, so nothing here
-// reads the host machine's real installation state. The install path itself
-// (download, signature check, elevation) is not driven end to end; the
-// signature verifier is covered by the unsigned-rejection case here and by
-// the opt-in Network test against the real installer.
+// subkey standing in for the Runtimes key), the DLL fallback through
+// RBMANAGER_VCRUNTIME and the host through RBMANAGER_OS_ARCH, so nothing
+// here reads the host machine's real installation state. The install path
+// itself (download, signature check, elevation) is not driven end to end;
+// the signature verifier is covered by the unsigned-rejection case here
+// and by the opt-in Network test against the real installer.
 [Trait("Category", "Unit")]
 [Collection(Serial.Name)]
 public class VcRedistTests
 {
     private const string Version = "v14.99.1.0";
 
-    private static void SeedInstalled(ScratchRegistryKey key, int installed = 1)
+    private static void SeedInstalled(ScratchRegistryKey key, int installed = 1,
+        string runtime = "x64")
     {
-        key.Key.SetValue("Installed", installed, RegistryValueKind.DWord);
-        key.Key.SetValue("Version", Version);
+        using RegistryKey sub = key.Key.CreateSubKey(runtime);
+        sub.SetValue("Installed", installed, RegistryValueKind.DWord);
+        sub.SetValue("Version", Version);
+    }
+
+    // The seams at the scratch key on a host of the given architecture.
+    private static EnvScope Redist(ScratchRegistryKey key, TempDir tmp, string arch = "X64")
+    {
+        var env = new EnvScope();
+        env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
+        env.Set("RBMANAGER_VCRUNTIME", Path.Combine(tmp.Path, "no-vcruntime140.dll"));
+        env.Set("RBMANAGER_OS_ARCH", arch);
+        return env;
     }
 
     // Points both seams at empty/nonexistent targets: a machine without the
@@ -30,6 +43,7 @@ public class VcRedistTests
         env.Set("RBMANAGER_VC_REDIST_KEY",
             $@"Software\rbmanager-tests\{Guid.NewGuid():N}");
         env.Set("RBMANAGER_VCRUNTIME", Path.Combine(tmp.Path, "no-vcruntime140.dll"));
+        env.Set("RBMANAGER_OS_ARCH", "X64");
         return env;
     }
 
@@ -48,7 +62,8 @@ public class VcRedistTests
         SeedInstalled(key);
         env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
 
-        Assert.Equal(Version, VcRedist.InstalledVersion());
+        Assert.Equal(Version, VcRedist.InstalledVersion("x64"));
+        Assert.Null(VcRedist.InstalledVersion("ARM64"));
     }
 
     [Fact]
@@ -59,7 +74,7 @@ public class VcRedistTests
         SeedInstalled(key, installed: 0);
         env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
 
-        Assert.Null(VcRedist.InstalledVersion());
+        Assert.Null(VcRedist.InstalledVersion("x64"));
     }
 
     [Fact]
@@ -69,7 +84,7 @@ public class VcRedistTests
         env.Set("RBMANAGER_VC_REDIST_KEY",
             $@"Software\rbmanager-tests\{Guid.NewGuid():N}");
 
-        Assert.Null(VcRedist.InstalledVersion());
+        Assert.Null(VcRedist.InstalledVersion("x64"));
     }
 
     [Fact]
@@ -77,10 +92,11 @@ public class VcRedistTests
     {
         using var key = new ScratchRegistryKey();
         using var env = new EnvScope();
-        key.Key.SetValue("Installed", 1, RegistryValueKind.DWord);
+        using (RegistryKey sub = key.Key.CreateSubKey("x64"))
+            sub.SetValue("Installed", 1, RegistryValueKind.DWord);
         env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
 
-        Assert.Equal("(unknown version)", VcRedist.InstalledVersion());
+        Assert.Equal("(unknown version)", VcRedist.InstalledVersion("x64"));
     }
 
     [Fact]
@@ -88,27 +104,100 @@ public class VcRedistTests
     {
         using var tmp = new TempDir("vcr");
         using var env = MissingRedist(tmp);
-        Assert.False(VcRedist.IsInstalled());
+        Assert.False(VcRedist.IsInstalled("x64"));
 
         string dll = Path.Combine(tmp.Path, "vcruntime140.dll");
         File.WriteAllBytes(dll, [0]);
         env.Set("RBMANAGER_VCRUNTIME", dll);
-        Assert.True(VcRedist.IsInstalled());
+        Assert.True(VcRedist.IsInstalled("x64"));
     }
+
+    [Theory] // case 140: arm64 rubies need the ARM64 runtime, the rest x64
+    [InlineData("ruby-3.4.12-arm64-mswin64_140", "ARM64")]
+    [InlineData(BinaryIndex.Arm64, "ARM64")]
+    [InlineData("ruby-3.4.12-x64-mswin64_140", "x64")]
+    [InlineData(BinaryIndex.X64, "x64")]
+    [InlineData("ruby-3.4.12-x86-mswin64_140", "x64")]
+    public void RuntimeOf_MapsPlatformToRuntimesKey(string ruby, string runtime) =>
+        Assert.Equal(runtime, VcRedist.RuntimeOf(ruby));
 
     [Fact]
     public async Task Ensure_AlreadyInstalled_ReportsAndReturnsZero()
     {
         using var key = new ScratchRegistryKey();
-        using var env = new EnvScope();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp);
         using var cap = new ConsoleCapture();
         SeedInstalled(key);
-        env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
 
         int rc = await VcRedist.Ensure(assumeYes: false);
 
         Assert.Equal(0, rc);
         Assert.Contains($"VC++ Redistributable {Version} is already installed", cap.Out);
+    }
+
+    [Fact] // case 141: on ARM64 setup needs both runtimes
+    public async Task Ensure_Arm64Host_BothRuntimes_ReturnsZero()
+    {
+        using var key = new ScratchRegistryKey();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp, "Arm64");
+        using var cap = new ConsoleCapture();
+        SeedInstalled(key);
+        SeedInstalled(key, runtime: "ARM64");
+
+        Assert.Equal(0, await VcRedist.Ensure(assumeYes: false));
+        Assert.Contains("is already installed", cap.Out);
+    }
+
+    [Fact] // case 142: an x64-only runtime on ARM64 offers the x64 package
+    public async Task Ensure_Arm64Host_MissingArm64Runtime_Offers()
+    {
+        using var key = new ScratchRegistryKey();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp, "Arm64");
+        using var cap = new ConsoleCapture();
+        using var stdin = new StdinScope("");
+        SeedInstalled(key);
+
+        Assert.Equal(1, await VcRedist.Ensure(assumeYes: false));
+        Assert.Contains("Visual C++ Redistributable (ARM64) is not installed", cap.Out);
+        Assert.Contains("vc_redist.x64.exe", cap.Out);
+    }
+
+    [Fact] // case 149: on ARM64 the DLL does not stand in for the ARM64 runtime
+    public async Task Ensure_Arm64Host_DllPresent_StillOffersArm64()
+    {
+        using var key = new ScratchRegistryKey();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp, "Arm64");
+        using var cap = new ConsoleCapture();
+        using var stdin = new StdinScope("");
+        SeedInstalled(key);
+        string dll = Path.Combine(tmp.Path, "vcruntime140.dll");
+        File.WriteAllBytes(dll, [0]);
+        env.Set("RBMANAGER_VCRUNTIME", dll);
+
+        Assert.Equal(1, await VcRedist.Ensure(assumeYes: false));
+        Assert.Contains("Visual C++ Redistributable (ARM64) is not installed", cap.Out);
+        Assert.DoesNotContain("already present", cap.Out);
+    }
+
+    [Fact] // case 150: nor for either runtime of a ruby installed or used there
+    public void WarnIfMissing_Arm64Host_DllPresent_StillWarns()
+    {
+        using var key = new ScratchRegistryKey();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp, "Arm64");
+        using var cap = new ConsoleCapture();
+        string dll = Path.Combine(tmp.Path, "vcruntime140.dll");
+        File.WriteAllBytes(dll, [0]);
+        env.Set("RBMANAGER_VCRUNTIME", dll);
+
+        Assert.False(VcRedist.IsInstalled("ARM64"));
+        Assert.False(VcRedist.IsInstalled("x64"));
+        VcRedist.WarnIfMissing("ruby-9.9.9-arm64-mswin64_140");
+        Assert.Contains("Visual C++ Redistributable (ARM64) was not found", cap.Err);
     }
 
     [Fact]
@@ -153,7 +242,7 @@ public class VcRedistTests
         using var env = MissingRedist(tmp);
         using var cap = new ConsoleCapture();
 
-        VcRedist.WarnIfMissing();
+        VcRedist.WarnIfMissing("ruby-9.9.9-x64-mswin64_140");
 
         Assert.Equal("", cap.Out);
         Assert.Contains("rb: warning:", cap.Err);
@@ -169,10 +258,26 @@ public class VcRedistTests
         SeedInstalled(key);
         env.Set("RBMANAGER_VC_REDIST_KEY", key.SubKeyPath);
 
-        VcRedist.WarnIfMissing();
+        VcRedist.WarnIfMissing("ruby-9.9.9-x64-mswin64_140");
 
         Assert.Equal("", cap.Out);
         Assert.Equal("", cap.Err);
+    }
+
+    [Fact] // case 143: an arm64 ruby is checked against the ARM64 runtime
+    public void WarnIfMissing_Arm64Ruby_ChecksArm64Runtime()
+    {
+        using var key = new ScratchRegistryKey();
+        using var tmp = new TempDir("vcr");
+        using var env = Redist(key, tmp, "Arm64");
+        using var cap = new ConsoleCapture();
+        SeedInstalled(key);
+
+        VcRedist.WarnIfMissing("ruby-9.9.9-x64-mswin64_140");
+        Assert.Equal("", cap.Err);
+
+        VcRedist.WarnIfMissing("ruby-9.9.9-arm64-mswin64_140");
+        Assert.Contains("Visual C++ Redistributable (ARM64) was not found", cap.Err);
     }
 
     [Fact]

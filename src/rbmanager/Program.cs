@@ -106,6 +106,7 @@ internal static class Program
         {
             Build build = await BinaryIndex.Resolve(source);
             Console.WriteLine($"Resolved {source} to {build.Name}");
+            WarnIfEmulated(source, build.Name);
             if (!build.Signed)
                 Console.Error.WriteLine($"warning: {build.Name} is not code-signed");
             source = build.Url;
@@ -144,7 +145,7 @@ internal static class Program
 
             Console.WriteLine($"Installed {name}");
             Console.WriteLine("Open a new terminal to pick up PATH changes.");
-            VcRedist.WarnIfMissing();
+            VcRedist.WarnIfMissing(name);
             return 0;
         }
         finally
@@ -194,24 +195,39 @@ internal static class Program
         Build[] builds = await BinaryIndex.Available();
         if (builds.Length == 0)
         {
-            Console.Error.WriteLine(
-                $"rb: the binary index offers no {BinaryIndex.Platform} builds");
+            Console.Error.WriteLine("rb: the binary index offers no " +
+                $"{string.Join(" or ", BinaryIndex.Platforms)} builds");
             return 0;
         }
         int name = builds.Max(b => b.Name.Length);
         int channel = builds.Max(b => b.Channel.Length);
+        int platform = builds.Max(b => b.Platform.Length);
         foreach (Build b in builds)
             Console.WriteLine($"{b.Name.PadRight(name)}  {b.Channel.PadRight(channel)}  " +
-                string.Join(", ", b.Tags));
+                $"{b.Platform.PadRight(platform)}  " + string.Join(", ", b.Tags));
         return 0;
     }
 
     internal static int Use(string query)
     {
-        SwitchTo(Resolve(query));
+        string name = Resolve(query, preferNative: true);
+        SwitchTo(name);
         Console.WriteLine($"Now using {CurrentTarget()}");
-        VcRedist.WarnIfMissing();
+        WarnIfEmulated(query, name);
+        VcRedist.WarnIfMissing(name);
         return 0;
+    }
+
+    // For a query that had nothing on this machine's own platform. A full
+    // package name asked for that very build, so it is not a fallback.
+    private static void WarnIfEmulated(string query, string name)
+    {
+        string[] platforms = BinaryIndex.Platforms;
+        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return;
+        if (platforms.Skip(1).FirstOrDefault(p => BinaryIndex.IsOn(name, p)) is { } fallback)
+            Console.Error.WriteLine(
+                $"warning: no {platforms[0]} build matches '{query}', " +
+                $"falling back to {fallback} under emulation");
     }
 
     internal static int Uninstall(string query)
@@ -265,12 +281,13 @@ internal static class Program
     private static IEnumerable<string> InstalledRubies() =>
         Directory.Exists(Rubies) ? Directory.EnumerateDirectories(Rubies).Order() : [];
 
-    internal static string Resolve(string query)
+    internal static string Resolve(string query, bool preferNative = false)
     {
         string[] matches = InstalledRubies()
             .Select(Path.GetFileName)
             .Where(n => n == query || n!.Contains(query, StringComparison.OrdinalIgnoreCase))
             .ToArray()!;
+        if (preferNative) matches = FirstPlatformOnly(query, matches);
         return matches switch
         {
             [var single] => single!,
@@ -278,6 +295,27 @@ internal static class Program
             _ => HighestRevision(matches!) ?? throw new InvalidOperationException(
                 $"'{query}' is ambiguous: {string.Join(", ", matches)}"),
         };
+    }
+
+    // The installed counterpart of BinaryIndex.Pick's platform order: the
+    // first of BinaryIndex.Platforms with a match hides the matches on the
+    // others. Names on none of them stay, so they remain as ambiguous as
+    // before. Across platforms the version the query spells out comes
+    // first, or "3.4.1" would land on an arm64 3.4.12 instead of an x64
+    // 3.4.1.
+    private static string[] FirstPlatformOnly(string query, string[] matches)
+    {
+        string[] platforms = BinaryIndex.Platforms;
+        string[] exact = matches
+            .Where(n => PackageName.Match(n) is { Success: true } m &&
+                m.Groups["ver"].Value.Equals(query, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (exact.Length > 0 && platforms.Count(p => matches.Any(n => BinaryIndex.IsOn(n, p))) > 1)
+            matches = exact;
+        string? first = platforms.FirstOrDefault(p => matches.Any(n => BinaryIndex.IsOn(n, p)));
+        return matches
+            .Where(n => !platforms.Any(p => p != first && BinaryIndex.IsOn(n, p)))
+            .ToArray();
     }
 
     // ruby-<version>[-<n>]-<platform>: a reissued release package
