@@ -20,7 +20,7 @@
        them to identify the project (docs/code-signing.md). The release
        workflow overrides Version from the tag. -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Product>rbmanager</Product>
     <AssemblyTitle>Ruby version manager for Windows</AssemblyTitle>
     <Company>Ruby Core Team</Company>
