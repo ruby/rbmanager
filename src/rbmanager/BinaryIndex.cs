@@ -54,7 +54,7 @@ internal static class BinaryIndex
 
     public static async Task<Build[]> Available() => Available(await FetchAll(), Platforms);
 
-    private static async Task<List<Build>> FetchAll()
+    internal static async Task<List<Build>> FetchAll()
     {
         var page = new Uri(Url, UriKind.Absolute);
         var builds = new List<Build>();

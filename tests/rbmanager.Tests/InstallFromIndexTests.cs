@@ -66,6 +66,7 @@ public class InstallFromIndexTests
         Assert.Equal(DevName, Program.CurrentTarget());
         Assert.Contains($"Resolved 4.1-dev to {DevName}", cap.Out);
         Assert.Contains($"Installed {DevName}", cap.Out);
+        Assert.Equal("4.1-dev", File.ReadAllText(Path.Combine(sb.Rubies, DevName, Program.TagFile)));
         Assert.DoesNotContain("not code-signed", cap.Err);
         Assert.False(File.Exists(Path.Combine(Path.GetTempPath(), $"{DevName}.zip")));
     }

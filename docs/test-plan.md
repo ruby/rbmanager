@@ -31,6 +31,7 @@ Command surface and contracts:
 |---|---|---|
 | `rb setup` | Copy own exe to `<root>\bin\rb.exe` (skip if already running from there, case-insensitive), append that dir to user PATH | 0 |
 | `rb install <version\|zip\|url>` | An argument that is not a URL and does not look like a zip path (no existing file, no path separator, no `.zip` suffix) is resolved through the binary index (see 4.13): pick the newest matching build of the first platform the host runs (`arm64-mswin64_140` then `x64-mswin64_140` on ARM64, `x64-mswin64_140` elsewhere, see 4.15), warn on stderr when an ARM64 host falls back to x64, download it, verify its `sha256`, warn on stderr when it is unsigned. If URL, download to `%TEMP%` first (deleted in `finally`). Zip must contain exactly one root dir named `ruby-*`; extract under `rubies`, inject the embedded `operating_system.rb` trust hook into `lib\ruby\site_ruby\rubygems\defaults\`, then switch `current` to it and ensure `current\bin` on user PATH. Refuse if already installed | 0 / 1 |
+| `rb install --update [<series>]` | Map each installed package to the series the index tags it with (`4.0` for a release, `4.1-dev` for a dev snapshot, nothing for a prerelease) and to the tag recorded in its `.rbmanager-tag`. Without an argument each ruby targets the newest build either resolves to on its platform. With one, only the rubies following it are kept and only it is resolved. A target that outranks every installed ruby aiming at it installs next to them. The old build stays. `current` moves only from the newest of them. See 4.16 | 0 / 1 |
 | `rb list` | Installed names sorted, active one starred | 0 |
 | `rb use <query>` | Resolve query (exact or case-insensitive substring; must be unambiguous), on ARM64 let an arm64 match hide the x64 ones and warn as install does when landing on x64, recreate the `current` junction, ensure PATH | 0 / 1 |
 | `rb uninstall <query>` | Resolve; if active, delete the junction first and print a hint; delete the install dir recursively | 0 / 1 |
@@ -586,6 +587,36 @@ it.
      in for an unregistered runtime: setup still names `ARM64` as missing.
 150. Nor does it for `IsInstalled` and `WarnIfMissing`, which warn for an
      arm64 ruby. On x64 the DLL fallback is unchanged.
+
+### 4.16 Program: `rb install --update`
+
+pymanager's `py install --update`, with the newer build installed next to the old one because gems live inside each ruby's tree. The feed and the `RBMANAGER_INDEX_URL` seam are those of 4.13. Every index entry an update must not download points at an unreachable URL.
+
+Unit (`UpdateTests`):
+
+151. `Follow` maps a release (reissues included) to `x.y`, a dev snapshot to `x.y-dev`, each with its platform, and a prerelease or any other name to nothing.
+152. Within a series a reissue outranks the original, 4.0.10 outranks 4.0.9, and a newer snapshot date outranks an older one.
+
+Integration (`UpdateTests`, Serial):
+
+153. A newer build of the active ruby's series installs next to it and takes `current`, with `Updating`, `Installed` and a `Kept ... rb uninstall ...` hint on stdout.
+154. Already newest → `<name> is up to date`, nothing downloaded.
+155. A named series updates only that series and leaves `current` on another series where it was, without the new-terminal hint.
+156. On ARM64 an x64 ruby updates to the x64 build even when an arm64 build of the series exists, with no emulation warning.
+157. An installed build newer than anything in the index is up to date, never downgraded.
+158. A dev snapshot moves to the newest snapshot of its dev series, with the unsigned warning.
+159. A series with no index build for its platform warns on stderr and the other series still update.
+160. A named series that no installed ruby follows → error listing the series the installed rubies follow, before the index is read.
+161. Nothing follows a series (only a prerelease installed) → `Nothing to update`, exit 0, index never read.
+163. A 4.1 dev snapshot recorded as `ruby-dev` moves to the 4.2 snapshot that now carries `ruby-dev`, whether run bare or as `--update ruby-dev`, and the new build keeps the `ruby-dev` record.
+164. `--update 4.0` on a ruby recorded as `4` installs the newest 4.0 even though `4` resolves to 4.1.0, and records nothing on the new build since `4` does not resolve to it.
+165. With `current` on 4.0.7 next to 4.0.8, the update installs 4.0.9 and `current` stays on 4.0.7.
+
+`InstallFromIndexTests` case 110 also checks that an install by tag writes that tag to `.rbmanager-tag`.
+
+E2E (`CliE2eTests`):
+
+162. `install --update` and `install -u` dispatch to the update and exit 0 on an empty root. A second series argument is usage, exit 2.
 
 ## 5. Execution plan
 

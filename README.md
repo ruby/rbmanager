@@ -24,6 +24,7 @@ rather than after the tool. rbmanager remains the product name.
 ```
 rb setup [--yes]           copy rb onto PATH and set up the VC++ runtime
 rb install <version|zip>   install a ruby binary package
+rb install -u [<series>]   update installed rubies within their series (--update)
 rb list                    list installed rubies
 rb list --remote           list the builds the binary index offers
 rb use <version>           switch the active ruby
@@ -52,6 +53,8 @@ reachable by their revisioned names such as `4.0.5-0`. The download is
 verified against the sha256 recorded in the index. An unsigned build
 (all dev snapshots are unsigned) installs with a warning. A zip path or
 URL skips the index and installs directly.
+
+`install --update` (or `-u`) follows pymanager's `py install --update`. Each installed release follows its series (`4.0`) and each dev snapshot its dev series (`4.1-dev`), on its own platform. A ruby installed from the index also follows the tag it was installed by, which `install` records in `.rbmanager-tag` beside it, so one installed as `ruby-dev` moves on to the next dev series. Each ruby moves to the newest build either of them resolves to. Naming a series or a recorded tag, as in `rb install --update 4.0`, limits the run to the rubies that follow it and resolves only that. Unlike pymanager, the newer build is installed next to the old one rather than over it, because gems live inside each ruby's tree. `current` follows only from the newest ruby it replaces, so a ruby picked with `rb use` stays active, and the old build stays until `rb uninstall` removes it. Prereleases follow no series.
 
 On ARM64 Windows `install` takes the arm64 build of a version or tag
 and falls back to the x64 build, which runs under emulation, with a
