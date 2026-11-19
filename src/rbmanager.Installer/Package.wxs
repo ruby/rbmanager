@@ -12,10 +12,13 @@
     Version  numeric x.y.z ProductVersion
     RbExe    path to the published rb.exe
 
-  The UpgradeCode and the PATH component GUID are UUIDv5 values derived
-  from fixed inputs, so they are constants baked in below; the
-  derivation is documented in docs/upgrade-code.md and must never
-  change.
+  The UpgradeCode and the PATH component GUID are UUIDv5 values (RFC
+  4122, SHA-1) baked in below as constants. Both use the namespace
+  E2C11F7E-A84E-4363-A0EB-D0A93E07E3CF, with the names
+  ruby-windows-installer:upgrade-code:rbmanager and
+  ruby-windows-installer:path-component:rbmanager:perUser. The namespace
+  and the names must never change, or new packages stop finding the
+  installed ones and in-place upgrades break.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="rbmanager"

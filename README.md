@@ -79,13 +79,15 @@ signal rb can give about its own age.
 toolchain for building C extension gems and runs the rest of the
 command line under it, as in `rb msvc gem install nokogiri`;
 `msvc enable` prints the same environment for a shell to eval instead.
-See [docs/msvc-enable.md](docs/msvc-enable.md). By default the newest
-install wins; `--vsver <2017|2019|2022|2026|latest>` (or the
+By default the newest install wins;
+`--vsver <2017|2019|2022|2026|latest>` (or the
 `RBMANAGER_VSVER` environment variable) pins a specific Visual Studio
 version, and `msvc --list` shows what is installed. Apart from
 `enable`, every word after `msvc` is the command to run, so future
 `msvc` operations are spelled as flags. The environment targets x64,
 so it cannot build extensions for an arm64 ruby.
+
+`rb msvc enable powershell | Invoke-Expression` activates the current PowerShell session, and `for /f "delims=" %L in ('rb msvc enable cmd') do @%L` does the same in cmd. The environment provides the compiler only. A gem that links a system library such as OpenSSL, zlib or libyaml also needs that library's headers and import libraries, which the mswin packages do not ship. For Rust extension gems both commands set `LIBCLANG_PATH` to the Visual Studio Llvm directory unless it is already set, and installing rustup is left to the user. When the Visual Studio install lacks the Windows SDK libraries, both commands stop and say so instead of handing back an environment that cannot link.
 
 `version` identifies the running binary, in cargo's shape, as in
 `rbmanager 0.1.0 (9a1b2c3 2026-07-28)`. `--version` and `-V` print the
@@ -123,9 +125,7 @@ dotnet test rbmanager.sln
 ```
 
 Suites that need more than the SDK (Visual Studio, network access)
-skip themselves when the environment lacks it; the category filters
-for running them selectively are listed in
-[docs/test-plan.md](docs/test-plan.md). CI
+skip themselves when the environment lacks it. Every test carries a `Category` trait (`Unit`, `Integration`, `E2E`, `RequiresVS`, `Publish`, `Network`), so `dotnet test rbmanager.sln --filter "Category=Unit|Category=Integration"` runs only the part that needs neither Visual Studio nor a built exe. CI
 (`.github/workflows/ci.yml`) runs the same build and the full suite
 on windows-latest, where VS is present.
 
@@ -151,7 +151,7 @@ For channels that want a real installer instead of the bare exe,
 The MSI installs `rb.exe` into `%LOCALAPPDATA%\Ruby\bin` and puts that
 directory on the user PATH, producing exactly the layout `rb setup`
 creates, and removes both again on uninstall. rbmanager is a single MSI
-product line; see [docs/upgrade-code.md](docs/upgrade-code.md). WiX
+product line with a fixed UpgradeCode, so each MSI upgrades the previous install in place. WiX
 5.0.2 comes in through the `WixToolset.Sdk` NuGet package, and ICE
 validation runs as part of the build. The MSI is unsigned, and so is
 the release rb.exe for now (see below).
@@ -171,8 +171,7 @@ the MSI and winget channels. CI builds stay unsigned.
 
 Code signing is on hold, so the release binaries are unsigned for now.
 The signing step stays in place, isolated in `.github/actions/sign` so
-the provider can be replaced later. The signing policy, the repository
-configuration, and the SignPath application checklist are in
+the provider can be replaced later. The signing policy is in
 [docs/code-signing.md](docs/code-signing.md).
 
 ## CA trust bootstrap
@@ -197,7 +196,7 @@ failure modes all degrade to the previous behavior.
 - `overlay/` — files layered onto every installed runtime
 - `src/rbmanager.Installer/`, `build-installer.ps1` — the rbmanager MSI
 - `winget/` — draft winget manifests
-- `docs/` — design notes
+- `docs/` — the code signing policy
 - `tools/query.ps1` — dump MSI tables via the WindowsInstaller COM API
 
 Build output goes to `artifacts/` (`UseArtifactsOutput` in

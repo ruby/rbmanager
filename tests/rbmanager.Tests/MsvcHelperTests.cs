@@ -1,7 +1,7 @@
 namespace RbManager.Tests;
 
 // Plan 4.8: Msvc pure helpers — no VS, no process, no filesystem. Case
-// notes pin known limitations (docs/test-plan.md 6.6, 6.7): ParseShell is
+// notes pin known limitations: ParseShell is
 // case-sensitive and neither Assignment nor QuoteArg escapes embedded quotes.
 [Trait("Category", "Unit")]
 public class MsvcHelperTests

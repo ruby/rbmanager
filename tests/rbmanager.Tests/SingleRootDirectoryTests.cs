@@ -3,8 +3,8 @@ using RbManager.Tests.Support;
 namespace RbManager.Tests;
 
 // Plan 4.1: Program.SingleRootDirectory — pure zip inspection, no filesystem
-// state beyond the fixture zip. Cases 4 and 6 pin known limitations (see
-// docs/test-plan.md section 6.4): a root-level file and backslash-separated
+// state beyond the fixture zip. Cases 4 and 6 pin known limitations: a
+// root-level file and backslash-separated
 // entry names are both treated as extra roots.
 [Trait("Category", "Unit")]
 public class SingleRootDirectoryTests
