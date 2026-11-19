@@ -28,6 +28,8 @@ internal static class Program
             {
                 ["setup"] => await Setup(assumeYes: false),
                 ["setup", "--yes" or "-y"] => await Setup(assumeYes: true),
+                ["install", "--update" or "-u"] => await Update(series: null),
+                ["install", "--update" or "-u", var series] => await Update(series),
                 ["install", var source] => await Install(source),
                 ["list"] => List(),
                 ["list", "--remote"] => await ListRemote(),
@@ -60,6 +62,10 @@ internal static class Program
               setup [--yes]          copy rb onto PATH and set up the VC++ runtime
               install <version|zip>  install a ruby binary package resolved from the
                                      binary index, or from a zip file or URL
+              install --update [<series>]
+                                     install the newest build of each installed
+                                     series (4.0, 4.1-dev) next to the old one
+                                     (also -u)
               list                   list installed rubies
               list --remote          list the builds the binary index offers
               use <version>          switch the active ruby
@@ -101,18 +107,29 @@ internal static class Program
         // resolve through the binary index (BinaryIndex.cs). sha256
         // verification is only possible on this path; a direct URL
         // carries no expected checksum.
-        string? sha256 = null;
-        if (!IsUrl(source) && !LooksLikeZipPath(source))
-        {
-            Build build = await BinaryIndex.Resolve(source);
-            Console.WriteLine($"Resolved {source} to {build.Name}");
-            WarnIfEmulated(source, build.Name);
-            if (!build.Signed)
-                Console.Error.WriteLine($"warning: {build.Name} is not code-signed");
-            source = build.Url;
-            sha256 = build.Sha256;
-        }
+        if (IsUrl(source) || LooksLikeZipPath(source))
+            return await InstallPackage(source, sha256: null, activate: true, tag: null);
+        Build build = await BinaryIndex.Resolve(source);
+        Console.WriteLine($"Resolved {source} to {build.Name}");
+        WarnIfEmulated(source, build.Name);
+        return await Install(build, activate: true, tag: source);
+    }
 
+    private static Task<int> Install(Build build, bool activate, string? tag)
+    {
+        if (!build.Signed)
+            Console.Error.WriteLine($"warning: {build.Name} is not code-signed");
+        return InstallPackage(build.Url, build.Sha256, activate, tag);
+    }
+
+    // Kept inside each ruby installed from the index, holding the tag it
+    // was installed by. A name only tells its own series, while a tag such
+    // as ruby-dev or 4 moves on to the next one.
+    internal const string TagFile = ".rbmanager-tag";
+
+    private static async Task<int> InstallPackage(string source, string? sha256, bool activate,
+        string? tag)
+    {
         string zip = source;
         string? downloaded = null;
         if (IsUrl(source))
@@ -141,10 +158,11 @@ internal static class Program
             ZipFile.ExtractToDirectory(zip, Rubies);
 
             InjectTrustHook(dest);
-            SwitchTo(name);
+            if (tag is not null) File.WriteAllText(Path.Combine(dest, TagFile), tag);
+            if (activate) SwitchTo(name);
 
             Console.WriteLine($"Installed {name}");
-            Console.WriteLine("Open a new terminal to pick up PATH changes.");
+            if (activate) Console.WriteLine("Open a new terminal to pick up PATH changes.");
             VcRedist.WarnIfMissing(name);
             return 0;
         }
@@ -153,6 +171,80 @@ internal static class Program
             if (downloaded is not null) File.Delete(downloaded);
         }
     }
+
+    // pymanager's `py install --update`, except that the newer build goes
+    // next to the old one instead of replacing it. Gems live inside each
+    // ruby's own tree, so replacing it would take them along. Each
+    // installed ruby moves to the newest build its series or its recorded
+    // tag resolves to on its own platform, so an x64 ruby on ARM64 stays
+    // x64. A named series is followed alone, which keeps `--update 4.0`
+    // within 4.0 even for a ruby installed as `4`.
+    internal static async Task<int> Update(string? series)
+    {
+        Followed[] all = InstalledRubies()
+            .Select(dir => Follow(Path.GetFileName(dir)) is { } f ? f with { Tag = ReadTag(dir) } : null)
+            .OfType<Followed>()
+            .ToArray();
+        Followed[] installed = series is null ? all : all.Where(f => f.Follows(series)).ToArray();
+        if (installed.Length == 0)
+        {
+            if (series is null)
+            {
+                Console.WriteLine("Nothing to update");
+                return 0;
+            }
+            string follows = string.Join(", ", all.Select(f => f.Series).Distinct().Order());
+            throw new InvalidOperationException(follows.Length == 0
+                ? $"no installed ruby follows '{series}'"
+                : $"no installed ruby follows '{series}' (installed rubies follow {follows})");
+        }
+
+        List<Build> index = await BinaryIndex.FetchAll();
+        Build? Pick(string? tag, string platform) =>
+            tag is null ? null : BinaryIndex.Pick(index, tag, [platform]);
+        var targets = installed
+            .Select(f => (Ruby: f, Build: series is not null ? Pick(series, f.Platform)
+                : Newer(Pick(f.Series, f.Platform), Pick(f.Tag, f.Platform))))
+            .ToArray();
+        foreach (var (s, platform) in targets.Where(t => t.Build is null)
+                     .Select(t => (series ?? t.Ruby.Series, t.Ruby.Platform)).Distinct())
+            Console.Error.WriteLine($"warning: the binary index has no {platform} build of {s}");
+
+        string? current = CurrentTarget();
+        foreach (var group in targets.Where(t => t.Build is not null).GroupBy(t => t.Build!.Name))
+        {
+            Build build = group.First().Build!;
+            Followed newest = group.Select(t => t.Ruby).MaxBy(f => f.Rank)!;
+            // Comparing ranks rather than names keeps a hand-installed
+            // build newer than the index from being downgraded.
+            if (Follow(build.Name) is not { } next || next.Rank.CompareTo(newest.Rank) <= 0)
+            {
+                Console.WriteLine($"{newest.Name} is up to date");
+                continue;
+            }
+            // A tag carries over only while it still resolves to the new
+            // build, so ruby-dev stays recorded and 4.0.8 does not.
+            string? tag = group.Select(t => t.Ruby.Tag)
+                .FirstOrDefault(t => Pick(t, build.Platform)?.Name == build.Name);
+            Console.WriteLine($"Updating {newest.Name} to {build.Name}");
+            // `current` on an older ruby of the series was put there by
+            // `rb use`, so it stays.
+            await Install(build, activate: newest.Name == current, tag);
+            Console.WriteLine($"Kept {newest.Name} (run `rb uninstall {newest.Name}` to remove it)");
+        }
+        return 0;
+    }
+
+    private static string? ReadTag(string rubyDir) =>
+        File.Exists(Path.Combine(rubyDir, TagFile))
+            ? File.ReadAllText(Path.Combine(rubyDir, TagFile)).Trim() is { Length: > 0 } tag ? tag : null
+            : null;
+
+    private static Build? Newer(Build? a, Build? b) =>
+        a is null ? b
+        : b is null ? a
+        : Follow(b.Name) is { } rb && Follow(a.Name) is { } ra && rb.Rank.CompareTo(ra.Rank) >= 0 ? b
+        : a;
 
     private static bool IsUrl(string source) =>
         source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -327,6 +419,42 @@ internal static class Program
     private static readonly Regex PackageName = new(
         @"^ruby-(?<ver>\d+\.\d+\.\d+(?:-[a-z][a-z0-9]*)?)(?:-(?<rev>\d+))?-(?<plat>(?:x64|x86|arm64)-.+)$",
         RegexOptions.IgnoreCase);
+
+    // ruby-<version>dev-<yyyymmdd>-<commit>-<platform>, a dev snapshot.
+    private static readonly Regex DevPackageName = new(
+        @"^ruby-(?<ver>\d+\.\d+\.\d+)dev-(?<date>\d{8})-(?<commit>[0-9a-f]+)-(?<plat>(?:x64|x86|arm64)-.+)$",
+        RegexOptions.IgnoreCase);
+
+    internal sealed record Followed(
+        string Name, string Series, string Platform, (Version, int, string, string) Rank,
+        string? Tag = null)
+    {
+        public bool Follows(string query) =>
+            Series.Equals(query, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Tag, query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The series `install --update` keeps a package on, spelled as the
+    // index tags it (tool/update_binaries_index.rb in ruby/actions): "4.0"
+    // for a release, "4.1-dev" for a dev snapshot. A prerelease follows
+    // nothing, since the index resolves it by its exact tag only. The rank
+    // orders packages within a series as BinaryIndex ranks builds.
+    internal static Followed? Follow(string name)
+    {
+        if (PackageName.Match(name) is { Success: true } r && !r.Groups["ver"].Value.Contains('-'))
+        {
+            var v = System.Version.Parse(r.Groups["ver"].Value);
+            int rev = r.Groups["rev"].Success ? int.Parse(r.Groups["rev"].Value) : 0;
+            return new(name, $"{v.Major}.{v.Minor}", r.Groups["plat"].Value, (v, rev, "", ""));
+        }
+        if (DevPackageName.Match(name) is { Success: true } d)
+        {
+            var v = System.Version.Parse(d.Groups["ver"].Value);
+            return new(name, $"{v.Major}.{v.Minor}-dev", d.Groups["plat"].Value,
+                (v, 0, d.Groups["date"].Value, d.Groups["commit"].Value));
+        }
+        return null;
+    }
 
     // When every match is the same ruby version on the same platform and
     // they differ only in revision, the newest reissue wins; the

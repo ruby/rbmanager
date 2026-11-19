@@ -17,7 +17,7 @@
 
   <!-- VERSIONINFO on the shipped exe. SmartScreen and the file-properties
        dialog show these fields, and the code-signing provider requires
-       them to identify the project (docs/code-signing.md). The release
+       them to identify the project. The release
        workflow overrides Version from the tag. -->
   <PropertyGroup>
     <Version>0.2.0</Version>

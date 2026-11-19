@@ -23,7 +23,7 @@ namespace RbManager;
 //   rb msvc --list                        list installed VS C++ toolchains
 //
 // The VS version is picked as --vsver flag > RBMANAGER_VSVER > newest
-// installed. See docs/msvc-enable.md for the design rationale.
+// installed.
 internal static class Msvc
 {
     // Product year <-> installationVersion major. The year is the

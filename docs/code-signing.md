@@ -1,7 +1,6 @@
 # Code signing
 
-This document is the code signing policy for rbmanager and the
-operating manual for the release signing pipeline.
+This document is the code signing policy for rbmanager.
 
 Signing is on hold for now, so releases ship unsigned through the
 draft path described below.
@@ -19,8 +18,8 @@ carries the Mark of the Web and faces SmartScreen head-on; unsigned, it
 is effectively blocked by the "Windows protected your PC" dialog. That
 makes it the highest-priority signing target of the whole distribution
 chain, ahead of the MSI and winget channels. CI builds stay unsigned;
-besides tag builds, only the manually dispatched signing rehearsal
-(below) submits binaries for signing, and those are never published.
+besides tag builds, only a manually dispatched signing rehearsal
+submits binaries for signing, and those are never published.
 
 ## Provider: SignPath Foundation now, replaceable later
 
@@ -40,11 +39,7 @@ of:
 The plan is to migrate to Azure Trusted Signing (now Artifact Signing)
 or an OV certificate on a cloud HSM once either becomes practical;
 Azure's Public Trust identity validation is currently limited to
-US/CA/EU/UK legal entities, which is why SignPath goes first. To keep
-the migration cheap, all provider-specific logic lives in the
-composite action `.github/actions/sign`. The release workflow only
-ever sees "unsigned artifact in, signed files out", so swapping the
-provider means editing that one action.
+US/CA/EU/UK legal entities, which is why SignPath goes first.
 
 ## How the release pipeline works
 
@@ -70,101 +65,3 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`:
 When the SignPath credentials are not configured, the signing step is
 skipped with a workflow warning and the release is created as a draft
 so unsigned binaries are never published silently.
-
-## Rehearsals and the test certificate period
-
-Running the Release workflow by hand (workflow_dispatch) is a signing
-rehearsal: it builds, signs and verifies exactly like a release, then
-uploads the signed binaries as the `rb-signed-rehearsal` workflow
-artifact and never creates a GitHub release. This is how the pipeline
-is exercised end to end before a real tag, and what SignPath's
-onboarding review runs against.
-
-While SignPath issues a test certificate, no machine trusts its chain,
-so `signtool verify` would always fail. Setting the repository
-variable `SIGNPATH_TEST_CERTIFICATE=true` switches verification to a
-rehearsal check: it only asserts that a signature from the expected
-certificate is present (and matches the thumbprint when configured).
-That mode is not a release gate; remove the variable as soon as the
-production certificate is in place.
-
-The exe's VERSIONINFO (ProductName `rbmanager`, FileDescription,
-company, version) is set in `src/rbmanager/rbmanager.csproj`; SignPath
-uses it to check that the artifact matches the project.
-
-## Repository configuration
-
-Everything lives in the `release-signing` GitHub environment
-(Settings, Environments). Recommended protection: required reviewers,
-so a human gates every signing run.
-
-Secret (environment-scoped, only the release workflow can read it):
-
-- `SIGNPATH_API_TOKEN`: API token of a SignPath user with submitter
-  permission.
-
-Variables (environment or repository level):
-
-- `SIGNPATH_ORGANIZATION_ID`: the shared ruby organization on
-  SignPath, the same one that signs the mswin binary packages
-- `SIGNPATH_PROJECT_SLUG`
-- `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` (optional; empty uses the
-  SignPath project's default configuration)
-- `SIGNPATH_SIGNING_POLICY_SLUG` (defaults to `release-signing` when
-  unset in the sign action; `test-signing` during the test
-  certificate period)
-- `SIGNPATH_TEST_CERTIFICATE` (`true` only during the test
-  certificate period, see above)
-- `SIGNPATH_CERTIFICATE_THUMBPRINT` (optional; SHA-1 thumbprint of
-  the signing certificate, set once the production certificate is
-  issued)
-
-Until these exist, tag pushes still work and produce unsigned draft
-releases.
-
-## SignPath Foundation application checklist
-
-Registering the project with SignPath Foundation is a manual step.
-Information the application needs:
-
-- Repository URL: https://github.com/ruby/rbmanager
-- License: BSD-2-Clause (see `LICENSE`)
-- Artifact description: `rb.exe`, a self-contained .NET 8 NativeAOT
-  Windows executable (the `rb` command of the rbmanager Ruby version
-  manager), built for win-x64 and win-arm64 by GitHub Actions in this
-  repository.
-- Code signing policy: this document.
-- Attribution: present in the README.
-
-rbmanager joins the existing ruby organization on SignPath as its
-second project, next to the one signing the mswin binary packages.
-SignPath adds it after the Ruby project's test signing review, so the
-project and artifact configuration slugs arrive later; the workflow
-runs the unsigned draft path until the variables above are filled in.
-
-SignPath-side setup after approval:
-
-1. Install the SignPath GitHub App on the repository (already done)
-   and link GitHub Actions as a trusted build system to the project.
-2. Create an artifact configuration for the `rb-unsigned` artifact the
-   build job uploads, a zip container holding both exes:
-
-   ```xml
-   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
-     <zip-file>
-       <pe-file path="rb-x64.exe">
-         <authenticode-sign/>
-       </pe-file>
-       <pe-file path="rb-arm64.exe">
-         <authenticode-sign/>
-       </pe-file>
-     </zip-file>
-   </artifact-configuration>
-   ```
-
-3. Create a signing policy for release signing with manual approval
-   and note its slug in `SIGNPATH_SIGNING_POLICY_SLUG`.
-4. Create an API token for a CI user with submitter permission and
-   store it as the `SIGNPATH_API_TOKEN` secret.
-5. Run a workflow_dispatch rehearsal (see above) and check that the
-   uploaded binaries carry the expected signature.

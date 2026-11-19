@@ -56,6 +56,19 @@ public class CliE2eTests
         Assert.Equal(2, sb.Run("list", "--remote", "extra").ExitCode);
     }
 
+    [Fact] // case 162: --update takes at most one series
+    public void InstallUpdate_Dispatch()
+    {
+        using var sb = new E2eSandbox();
+        foreach (string flag in new[] { "--update", "-u" })
+        {
+            RbResult r = sb.Run("install", flag);
+            Assert.Equal(0, r.ExitCode);
+            Assert.Equal("Nothing to update", r.Out.TrimEnd());
+        }
+        Assert.Equal(2, sb.Run("install", "--update", "4.0", "3.4").ExitCode);
+    }
+
     [Fact] // case 37
     public void FailingCommand_ErrorToStderr_Exit1_EmptyStdout()
     {
